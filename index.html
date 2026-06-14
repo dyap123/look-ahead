@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0a0f1a" />
+<title>WEBCOR · Look-Ahead</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+<link rel="stylesheet" href="assets/tw.css" />
+<!-- Firebase compat -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<style>
+  /* perf: never paint a blur (matches cup-dashboard CPU rule) */
+  *{ backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }
+  html,body{ background:#05070d; color:#e8edf6; font-family:'Inter',system-ui,sans-serif; }
+  body{ margin:0; -webkit-font-smoothing:antialiased; }
+  .display{ font-family:'Space Grotesk',sans-serif; }
+  .mono{ font-family:'JetBrains Mono',monospace; }
+  .ms{ font-family:'Material Symbols Outlined'; font-weight:normal; font-style:normal; line-height:1; -webkit-font-feature-settings:'liga'; font-feature-settings:'liga'; vertical-align:middle; }
+  .card{ background:linear-gradient(180deg, rgba(20,26,40,.85), rgba(9,12,20,.9)); border:1px solid rgba(150,170,205,.12); border-radius:14px; box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 14px 34px -20px rgba(0,0,0,.7); }
+  input,select{ color-scheme:dark; }
+  .fld{ background:#0c1322; border:1px solid rgba(150,170,205,.18); border-radius:8px; color:#e8edf6; padding:5px 8px; font-size:13px; }
+  .fld:focus{ outline:none; border-color:#3FA535; box-shadow:0 0 0 2px rgba(63,165,53,.25); }
+  .btn{ display:inline-flex; align-items:center; gap:6px; border-radius:9px; padding:7px 12px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:.12s; user-select:none; }
+  .btn-green{ background:#3FA535; color:#04210a; } .btn-green:hover{ background:#5BC04F; }
+  .btn-ghost{ background:rgba(150,170,205,.08); color:#cdd7ea; border-color:rgba(150,170,205,.16); } .btn-ghost:hover{ background:rgba(150,170,205,.16); }
+  .btn-sm{ padding:4px 8px; font-size:12px; border-radius:7px; }
+  .icobtn{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:7px; cursor:pointer; color:#9fb0cc; background:transparent; border:1px solid transparent; }
+  .icobtn:hover{ background:rgba(150,170,205,.14); color:#e8edf6; }
+  .chip{ display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }
+  .tabbtn{ padding:8px 16px; border-radius:10px; font-weight:600; font-size:14px; cursor:pointer; color:#9fb0cc; }
+  .tabbtn.on{ background:#3FA535; color:#04210a; }
+  /* gantt */
+  .gantt{ border-collapse:separate; border-spacing:0; font-size:11px; }
+  .gantt th,.gantt td{ border-right:1px solid rgba(150,170,205,.08); border-bottom:1px solid rgba(150,170,205,.08); }
+  .gantt .day{ width:24px; min-width:24px; max-width:24px; height:26px; text-align:center; padding:0; font-family:'JetBrains Mono',monospace; font-weight:700; }
+  .gantt .lab{ padding:4px 8px; white-space:nowrap; }
+  .gantt .tname{ position:sticky; left:0; z-index:3; background:#0a0f1a; min-width:180px; max-width:240px; overflow:hidden; text-overflow:ellipsis; }
+  .gantt thead .tname{ z-index:5; }
+  .gantt .wknd{ background:rgba(120,140,180,.12); }
+  .gantt .hol{ background:rgba(229,57,53,.14); }
+  .gantt .secband td{ background:#1f4e79; color:#fff; font-weight:700; padding:5px 10px; position:sticky; left:0; }
+  .gantt .today{ box-shadow:inset 2px 0 0 #FFBF00; }
+  .scroll{ overflow:auto; }
+  .scroll::-webkit-scrollbar{ height:10px; width:10px; } .scroll::-webkit-scrollbar-thumb{ background:rgba(150,170,205,.3); border-radius:6px; }
+  /* editor rows */
+  .trow{ display:grid; grid-template-columns: 26px 1fr 34px 116px 116px 66px 150px auto; gap:6px; align-items:center; padding:5px 8px; border-bottom:1px solid rgba(150,170,205,.07); }
+  .trow:hover{ background:rgba(150,170,205,.04); }
+  @media (max-width:880px){ .trow{ grid-template-columns: 22px 1fr 30px 100px 64px 120px auto; } .trow .col-finish{ display:none; } }
+  .modalwrap{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px; }
+  .toast{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); padding:10px 16px; border-radius:10px; font-weight:600; font-size:13px; z-index:80; box-shadow:0 10px 30px -10px #000; }
+  .seg{ display:inline-flex; background:rgba(150,170,205,.08); border-radius:12px; padding:4px; gap:4px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="modal"></div>
+<div id="toast"></div>
+
+<script>
+/* ============================================================ STATE */
+const NS = 'look-ahead-schedule';
+const state = {
+  tab: 'builder',
+  companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
+  resolved: {}, online: false, showPreview: true, seeded: false,
+};
+
+/* ============================================================ HELPERS */
+const $ = (s,el=document)=>el.querySelector(s);
+const pad = n => String(n).padStart(2,'0');
+const uid = p => p + Math.random().toString(36).slice(2,8);
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function toast(msg, kind='ok'){
+  const el=document.createElement('div'); el.className='toast';
+  el.style.background = kind==='err' ? '#7f1d1d' : kind==='warn' ? '#92610a' : '#1f6b2a';
+  el.style.color='#fff'; el.textContent=msg; $('#toast').appendChild(el);
+  setTimeout(()=>el.remove(), 2600);
+}
+function hexToRgb(h){ const c=h.replace('#',''); return [parseInt(c.slice(0,2),16),parseInt(c.slice(2,4),16),parseInt(c.slice(4,6),16)]; }
+function textOn(hex){ const [r,g,b]=hexToRgb(hex); return (0.299*r+0.587*g+0.114*b)/255 > 0.62 ? '#111111' : '#ffffff'; }
+
+/* ============================================================ DATE ENGINE */
+function parseYMD(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y, m-1, d, 12); }
+function fmtYMD(dt){ return `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`; }
+function addDays(s,n){ const d=parseYMD(s); d.setDate(d.getDate()+n); return fmtYMD(d); }
+function dow(s){ return parseYMD(s).getDay(); } // 0=Sun .. 6=Sat
+function isWeekend(s){ const d=dow(s); return d===0||d===6; }
+function isHoliday(s,hol){ return !!(hol&&hol[s]); }
+function isWorkday(s,hol){ return !isWeekend(s) && !isHoliday(s,hol); }
+function workday(start,n,hol){
+  let s=start; const step=n>=0?1:-1; let left=Math.abs(n);
+  while(!isWorkday(s,hol)) s=addDays(s, step||1);
+  while(left>0){ s=addDays(s,step); if(isWorkday(s,hol)) left--; }
+  return s;
+}
+function taskFinish(start,days,hol){ return workday(start, Math.max(1, Number(days)||1)-1, hol); }
+function workingDaysBetween(start,finish,hol){
+  const out=[]; let s=start; let guard=0;
+  while(parseYMD(s)<=parseYMD(finish) && guard++<3650){ if(isWorkday(s,hol)) out.push(s); s=addDays(s,1); }
+  return out;
+}
+function fmtMD(ymd){ if(!ymd) return ''; const [y,m,d]=ymd.split('-'); return `${Number(m)}/${Number(d)}`; }
+
+function computeProject(project, hol){
+  const tasks = Object.entries(project.tasks||{}).map(([id,t])=>({id,...t}));
+  const byId={}; tasks.forEach(t=>byId[t.id]=t);
+  const bySection={}; tasks.forEach(t=>{ (bySection[t.sectionId]=bySection[t.sectionId]||[]).push(t); });
+  Object.values(bySection).forEach(a=>a.sort((x,y)=>(x.order||0)-(y.order||0)));
+  const prevInSection=t=>{ const a=bySection[t.sectionId]||[]; const i=a.findIndex(x=>x.id===t.id); return i>0?a[i-1]:null; };
+  const memo={}, stack=new Set();
+  function resolve(t){
+    if(memo[t.id]) return memo[t.id];
+    const anchor = t.start || project.startDate;
+    if(stack.has(t.id)){ const s=workday(anchor,0,hol); return {start:s, finish:taskFinish(s,t.days,hol)}; }
+    stack.add(t.id);
+    let pred=null;
+    if(t.depId && byId[t.depId]) pred=byId[t.depId];
+    else if(t.depMode==='afterPrev') pred=prevInSection(t);
+    let start;
+    if(pred){ const pr=resolve(pred); start=workday(pr.finish, 1 + (Number(t.lag)||0), hol); }
+    else { start=workday(anchor,0,hol); }
+    const finish=taskFinish(start, t.days, hol);
+    stack.delete(t.id);
+    return memo[t.id]={start, finish};
+  }
+  tasks.forEach(resolve);
+  return memo;
+}
+
+/* ============================================================ DEFAULT DATA */
+const DEFAULT_COMPANIES = {
+  webcor:  {name:'Webcor',     letter:'W',  color:'#3FA535', order:0},
+  malcom:  {name:'Malcom',     letter:'M',  color:'#2F6FE0', order:1},
+  cmc:     {name:'CMC',        letter:'R',  color:'#1FA89B', order:2},
+  sme:     {name:'SME',        letter:'S',  color:'#F08C00', order:3},
+  zarp:    {name:'Zarp',       letter:'Z',  color:'#E0A800', order:4},
+  inspect: {name:'Inspection', letter:'I',  color:'#56B4E9', order:5},
+  pour:    {name:'Pour',       letter:'P',  color:'#7CD12B', order:6},
+  cure:    {name:'Cure',       letter:'CU', color:'#9AA3AD', order:7},
+  bali:    {name:'Bali',       letter:'B',  color:'#7E57C2', order:8},
+  sharma:  {name:'Sharma',     letter:'SH', color:'#E0639B', order:9},
+  murray:  {name:'Murray',     letter:'M',  color:'#B5651D', order:10},
+  survey:  {name:'Survey',     letter:'SV', color:'#D2691E', order:11},
+  delay:   {name:'Delay',      letter:'D',  color:'#E53935', order:12},
+};
+const DEFAULT_HOLIDAYS = {
+  '2026-07-03':'Independence Day (obs)', '2026-09-07':'Labor Day',
+  '2026-11-26':'Thanksgiving', '2026-11-27':'Day after Thanksgiving',
+  '2026-12-24':'Christmas Eve', '2026-12-25':'Christmas Day', '2027-01-01':'New Year’s Day',
+};
+const DEFAULT_TEMPLATES = {
+  pileCapCycle: { name:'Pile Cap / Footing Cycle', tasks:[
+    {name:'Layout Foundations',          companyId:'webcor',  days:1},
+    {name:'Excavate Foundations',        companyId:'zarp',    days:2},
+    {name:'Chip down overpoured piles',  companyId:'malcom',  days:2},
+    {name:'Set formwork',                companyId:'webcor',  days:3},
+    {name:'Rebar bottom / plinth',       companyId:'cmc',     days:2},
+    {name:'Top steel / Shear pins',      companyId:'cmc',     days:2},
+    {name:'Set anchor bolts',            companyId:'webcor',  days:2},
+    {name:'Bill Car survey / SME',       companyId:'sme',     days:1},
+    {name:'Inspection',                  companyId:'inspect', days:1},
+    {name:'Pour',                        companyId:'pour',    days:1, linkPour:true},
+    {name:'Strip formwork',              companyId:'webcor',  days:2},
+    {name:'Backfill',                    companyId:'zarp',    days:2},
+    {name:'Cure',                        companyId:'cure',    days:15},
+  ]},
+};
+function defaultProject(){
+  // anchor to next Monday from today
+  let s=fmtYMD(new Date()); while(dow(s)!==1) s=addDays(s,1);
+  const pid='laccfdn';
+  const proj={ id:pid, name:'LA Convention Center', subtitle:'Look Ahead Schedule', startDate:s, sections:{}, tasks:{} };
+  addCycleTo(proj, 'pileCapCycle', 'Grid line R Pile caps 8-10', s, null);
+  return proj;
+}
+function addCycleTo(proj, tplId, sectionName, firstStart, chainToTaskId){
+  const tpl = (state.templates[tplId]||DEFAULT_TEMPLATES[tplId]);
+  if(!tpl) return;
+  const sid=uid('s_');
+  const order = Object.keys(proj.sections).length;
+  proj.sections[sid] = { name:sectionName, order };
+  let prevId = chainToTaskId || null;
+  tpl.tasks.forEach((step,i)=>{
+    const tid=uid('t_');
+    const t = { sectionId:sid, order:i, name:step.name, companyId:step.companyId, days:step.days, lag:0, depId:null, linkedPourId:null };
+    if(i===0){
+      if(chainToTaskId){ t.depMode='afterPrev'; t.depId=chainToTaskId; }
+      else { t.depMode='manual'; t.start=firstStart; }
+    } else { t.depMode='afterPrev'; }
+    proj.tasks[tid]=t; prevId=tid;
+  });
+  return sid;
+}
+
+/* ============================================================ ACTIVE PROJECT */
+function activeId(){ return state.meta.activeProjectId || Object.keys(state.projects)[0]; }
+function activeProject(){ return state.projects[activeId()]; }
+function ensureActive(){
+  if(!Object.keys(state.projects).length){ const p=defaultProject(); state.projects[p.id]=p; state.meta.activeProjectId=p.id; }
+  if(!state.projects[state.meta.activeProjectId]) state.meta.activeProjectId=Object.keys(state.projects)[0];
+}
+function companyList(){ return Object.entries(state.companies).map(([id,c])=>({id,...c})).sort((a,b)=>(a.order||0)-(b.order||0)); }
+function sectionList(p){ return Object.entries(p.sections||{}).map(([id,s])=>({id,...s})).sort((a,b)=>(a.order||0)-(b.order||0)); }
+function tasksOf(p, sid){ return Object.entries(p.tasks||{}).filter(([,t])=>t.sectionId===sid).map(([id,t])=>({id,...t})).sort((a,b)=>(a.order||0)-(b.order||0)); }
+
+function recomputeActive(){
+  const p=activeProject(); if(!p){ state.resolved={}; return; }
+  const res=computeProject(p, state.holidays); state.resolved=res;
+  Object.entries(res).forEach(([tid,r])=>{ if(p.tasks[tid]){ p.tasks[tid].cStart=r.start; p.tasks[tid].cFinish=r.finish; } });
+}
+
+/* ============================================================ FIREBASE */
+const FIREBASE_CONFIG = { databaseURL: localStorage.getItem('la_firebase_url') || 'https://gen-lang-client-0119642855-default-rtdb.firebaseio.com' };
+let db=null;
+function initFirebase(){ try{ if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG); db=firebase.database(); return true; }catch(e){ console.error('fb init',e); return false; } }
+const fb = {
+  set:(p,d)=> db? db.ref(NS+'/'+p).set(d) : Promise.resolve(),
+  update:(p,d)=> db? db.ref(NS+'/'+p).update(d) : Promise.resolve(),
+  get:(p)=> db? db.ref(NS+'/'+p).once('value').then(s=>s.val()) : Promise.resolve(null),
+  remove:(p)=> db? db.ref(NS+'/'+p).remove() : Promise.resolve(),
+  listen:(p,cb)=>{ if(db) db.ref(NS+'/'+p).on('value', s=>cb(s.val())); },
+};
+function saveLocal(){ try{ localStorage.setItem('la_snapshot', JSON.stringify({companies:state.companies,holidays:state.holidays,templates:state.templates,meta:state.meta,projects:state.projects})); }catch(e){} }
+function loadLocal(){
+  try{ const s=JSON.parse(localStorage.getItem('la_snapshot')||'null');
+    if(s){ state.companies=s.companies||{}; state.holidays=s.holidays||{}; state.templates=s.templates||{}; state.meta=s.meta||{}; state.projects=s.projects||{}; }
+  }catch(e){}
+  if(!Object.keys(state.companies).length) state.companies={...DEFAULT_COMPANIES};
+  if(!Object.keys(state.templates).length) state.templates=JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
+  if(!Object.keys(state.holidays).length) state.holidays={...DEFAULT_HOLIDAYS};
+}
+let saveTimer=null;
+function saveActive(){ saveLocal(); if(!db) return; clearTimeout(saveTimer); saveTimer=setTimeout(()=>{ const pid=activeId(); if(pid&&state.projects[pid]) fb.set('projects/'+pid, state.projects[pid]); fb.set('meta', state.meta); }, 450); }
+function saveCompanies(){ saveLocal(); fb.set('companies', state.companies); }
+function saveHolidays(){ saveLocal(); fb.set('holidays', state.holidays); }
+function saveTemplates(){ saveLocal(); fb.set('templates', state.templates); }
+
+async function seedIfNeeded(){
+  if(!await fb.get('companies')) await fb.set('companies', state.companies);
+  if(!await fb.get('templates')) await fb.set('templates', state.templates);
+  if(!await fb.get('holidays')) await fb.set('holidays', state.holidays);
+  const projs=await fb.get('projects');
+  if(!projs){ ensureActive(); await fb.set('projects/'+activeId(), activeProject()); await fb.set('meta', state.meta); }
+}
+function attachListeners(){
+  fb.listen('companies', v=>{ if(v){ state.companies=v; saveLocal(); render(); } });
+  fb.listen('holidays',  v=>{ state.holidays=v||{}; saveLocal(); recomputeActive(); render(); });
+  fb.listen('templates', v=>{ if(v){ state.templates=v; saveLocal(); } });
+  fb.listen('meta',      v=>{ if(v){ state.meta=v; ensureActive(); recomputeActive(); render(); } });
+  fb.listen('projects',  v=>{ state.projects=v||{}; ensureActive(); recomputeActive(); saveLocal(); render(); });
+  if(db) db.ref('pours-user').on('value', s=>{ state.pours=s.val()||{}; if(state.tab==='builder') render(); });
+}
+
+/* ============================================================ MUTATIONS */
+function changeTaskField(tid, field, value){
+  const p=activeProject(); const t=p.tasks[tid]; if(!t) return;
+  if(field==='days') value=Math.max(1, parseInt(value)||1);
+  if(field==='lag') value=parseInt(value)||0;
+  t[field]=value;
+  recomputeActive(); render(); saveActive();
+}
+function toggleDep(tid){
+  const p=activeProject(); const t=p.tasks[tid]; if(!t) return;
+  if(t.depMode==='afterPrev'){ t.depMode='manual'; t.start = state.resolved[tid]?.start || p.startDate; }
+  else { t.depMode='afterPrev'; }
+  recomputeActive(); render(); saveActive();
+}
+function addTask(sid){
+  const p=activeProject(); const n=tasksOf(p,sid).length;
+  const tid=uid('t_'); p.tasks[tid]={ sectionId:sid, order:n, name:'New task', companyId:companyList()[0]?.id||'webcor', days:1, depMode: n? 'afterPrev':'manual', depId:null, lag:0, linkedPourId:null, start:p.startDate };
+  recomputeActive(); render(); saveActive();
+}
+function dupTask(tid){
+  const p=activeProject(); const t=p.tasks[tid]; if(!t) return;
+  const copy=JSON.parse(JSON.stringify(t)); copy.order=(t.order||0)+0.5; const nid=uid('t_'); p.tasks[nid]=copy;
+  renumber(p,t.sectionId); recomputeActive(); render(); saveActive();
+}
+function delTask(tid){ const p=activeProject(); const sid=p.tasks[tid]?.sectionId; delete p.tasks[tid]; if(sid) renumber(p,sid); recomputeActive(); render(); saveActive(); }
+function moveTask(tid, dir){
+  const p=activeProject(); const t=p.tasks[tid]; const arr=tasksOf(p,t.sectionId);
+  const i=arr.findIndex(x=>x.id===tid); const j=i+dir; if(j<0||j>=arr.length) return;
+  const a=arr[i], b=arr[j]; const ao=p.tasks[a.id].order; p.tasks[a.id].order=p.tasks[b.id].order; p.tasks[b.id].order=ao;
+  recomputeActive(); render(); saveActive();
+}
+function renumber(p, sid){ tasksOf(p,sid).forEach((t,i)=>{ p.tasks[t.id].order=i; }); }
+function addSection(){ const p=activeProject(); const sid=uid('s_'); p.sections[sid]={name:'New Section', order:sectionList(p).length}; render(); saveActive(); }
+function renameSection(sid,name){ activeProject().sections[sid].name=name; saveActive(); }
+function delSection(sid){ const p=activeProject(); if(!confirm('Delete this section and its tasks?')) return; Object.keys(p.tasks).forEach(tid=>{ if(p.tasks[tid].sectionId===sid) delete p.tasks[tid]; }); delete p.sections[sid]; recomputeActive(); render(); saveActive(); }
+function moveSection(sid,dir){ const p=activeProject(); const arr=sectionList(p); const i=arr.findIndex(x=>x.id===sid); const j=i+dir; if(j<0||j>=arr.length) return; const a=arr[i],b=arr[j]; const ao=p.sections[a.id].order; p.sections[a.id].order=p.sections[b.id].order; p.sections[b.id].order=ao; render(); saveActive(); }
+
+/* ============================================================ RENDER */
+function render(){
+  ensureActive(); if(!Object.keys(state.resolved).length) recomputeActive();
+  const p=activeProject();
+  $('#app').innerHTML = header() + (state.tab==='builder' ? builderView(p) : settingsView(p));
+}
+function header(){
+  const p=activeProject();
+  const projOpts=Object.entries(state.projects).map(([id,pr])=>`<option value="${id}" ${id===activeId()?'selected':''}>${esc(pr.name)}</option>`).join('');
+  return `
+  <div class="sticky top-0 z-30" style="background:linear-gradient(180deg,#0a1e0c,#07120a); border-bottom:1px solid rgba(63,165,53,.3)">
+    <div class="max-w-[1500px] mx-auto px-4 py-2.5 flex items-center gap-3 flex-wrap">
+      <div class="display font-bold text-lg tracking-tight" style="color:#3FA535">WEBCOR<span class="text-white/90 font-medium"> · Look-Ahead</span></div>
+      <select class="fld ml-1" onchange="state.meta.activeProjectId=this.value; recomputeActive(); render(); saveActive()">${projOpts}</select>
+      <div class="seg ml-auto">
+        <div class="tabbtn ${state.tab==='builder'?'on':''}" onclick="state.tab='builder'; render()">Builder</div>
+        <div class="tabbtn ${state.tab==='settings'?'on':''}" onclick="state.tab='settings'; render()">Settings</div>
+      </div>
+      <button class="btn btn-green" onclick="openExport()"><span class="ms">ios_share</span>Export</button>
+      <span class="text-xs px-2 py-1 rounded-full ${state.online?'text-green-300':'text-amber-300'}" style="background:rgba(150,170,205,.1)">
+        <span class="ms text-[14px]">${state.online?'cloud_done':'cloud_off'}</span> ${state.online?'Synced':'Offline'}</span>
+    </div>
+  </div>`;
+}
+
+function builderView(p){
+  return `<div class="max-w-[1500px] mx-auto px-4 py-4">
+    <div class="flex items-center gap-2 mb-3 flex-wrap">
+      <button class="btn btn-ghost" onclick="openInsertCycle()"><span class="ms text-[18px]">library_add</span>Insert Cycle</button>
+      <button class="btn btn-ghost" onclick="addSection()"><span class="ms text-[18px]">add</span>Add Section</button>
+      <div class="ml-auto flex items-center gap-2 text-xs text-white/50">
+        <span class="ms text-[16px]">event</span> Anchor ${esc(p.startDate)}
+        <button class="btn btn-ghost btn-sm" onclick="state.showPreview=!state.showPreview; render()">${state.showPreview?'Hide':'Show'} preview</button>
+      </div>
+    </div>
+    ${editorPanel(p)}
+    ${state.showPreview ? `<div class="mt-5">${ganttPanel(p)}</div>` : ''}
+  </div>`;
+}
+
+function editorPanel(p){
+  const secs=sectionList(p);
+  if(!secs.length) return `<div class="card p-8 text-center text-white/50">No sections yet. Click <b>Insert Cycle</b> to drop in a full foundation sequence, or <b>Add Section</b>.</div>`;
+  return secs.map(s=>{
+    const rows=tasksOf(p,s.id).map(t=>taskRow(p,t)).join('');
+    return `<div class="card mb-4 overflow-hidden">
+      <div class="flex items-center gap-2 px-3 py-2" style="background:#1f4e79">
+        <span class="ms text-white/70">drag_indicator</span>
+        <input class="fld bg-transparent border-transparent font-semibold text-white flex-1" value="${esc(s.name)}" onchange="renameSection('${s.id}', this.value)">
+        <button class="icobtn text-white/80" title="Move up" onclick="moveSection('${s.id}',-1)"><span class="ms text-[18px]">arrow_upward</span></button>
+        <button class="icobtn text-white/80" title="Move down" onclick="moveSection('${s.id}',1)"><span class="ms text-[18px]">arrow_downward</span></button>
+        <button class="btn btn-ghost btn-sm" onclick="addTask('${s.id}')"><span class="ms text-[16px]">add</span>Task</button>
+        <button class="icobtn text-white/80" title="Delete section" onclick="delSection('${s.id}')"><span class="ms text-[18px]">delete</span></button>
+      </div>
+      <div class="trow text-[11px] uppercase tracking-wide text-white/40">
+        <div></div><div>Task</div><div class="text-center">Days</div><div>Start</div><div class="col-finish">Finish</div><div>Chain</div><div>Company</div><div></div>
+      </div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
+function taskRow(p,t){
+  const r=state.resolved[t.id]||{}; const chained=t.depMode==='afterPrev';
+  const opts=companyList().map(c=>`<option value="${c.id}" ${c.id===t.companyId?'selected':''}>${esc(c.name)}</option>`).join('');
+  const c=state.companies[t.companyId];
+  const linked = t.linkedPourId ? `<span class="chip" title="Linked to Cup pour" style="background:#4A8EFF22;color:#9ec5ff">⛓ Cup</span>` : '';
+  return `<div class="trow">
+    <div class="flex flex-col">
+      <button class="icobtn" style="height:14px" onclick="moveTask('${t.id}',-1)"><span class="ms text-[14px]">expand_less</span></button>
+      <button class="icobtn" style="height:14px" onclick="moveTask('${t.id}',1)"><span class="ms text-[14px]">expand_more</span></button>
+    </div>
+    <input class="fld" value="${esc(t.name)}" onchange="changeTaskField('${t.id}','name',this.value)">
+    <input class="fld text-center" type="number" min="1" value="${t.days}" onchange="changeTaskField('${t.id}','days',this.value)">
+    ${chained
+      ? `<div class="fld text-white/45 flex items-center" title="Auto from previous task">${esc(r.start||'')}</div>`
+      : `<input class="fld" type="date" value="${esc(t.start||r.start||p.startDate)}" onchange="changeTaskField('${t.id}','start',this.value)">`}
+    <div class="fld col-finish text-white/55 flex items-center">${esc(r.finish||'')}</div>
+    <button class="btn btn-ghost btn-sm justify-center" title="${chained?'Chained to previous — click for fixed date':'Fixed date — click to chain'}" onclick="toggleDep('${t.id}')">
+      <span class="ms text-[16px]">${chained?'link':'push_pin'}</span>${chained?'Chain':'Fixed'}</button>
+    <div class="flex items-center gap-1">
+      <span class="chip" style="background:${c?c.color:'#444'};color:${c?textOn(c.color):'#fff'}">${c?esc(c.letter):'?'}</span>
+      <select class="fld flex-1" onchange="changeTaskField('${t.id}','companyId',this.value)">${opts}</select>
+    </div>
+    <div class="flex items-center gap-1 justify-end">
+      ${linked}
+      <button class="icobtn" title="Link Cup pour" onclick="openPourLink('${t.id}')"><span class="ms text-[16px]">link</span></button>
+      <button class="icobtn" title="Duplicate" onclick="dupTask('${t.id}')"><span class="ms text-[16px]">content_copy</span></button>
+      <button class="icobtn" title="Delete" onclick="delTask('${t.id}')"><span class="ms text-[16px]">close</span></button>
+    </div>
+  </div>`;
+}
+
+/* ---------- GANTT (WYSIWYG preview) ---------- */
+function ganttWindow(p){
+  const res=state.resolved; let min=null,max=null;
+  Object.values(res).forEach(r=>{ if(!min||r.start<min)min=r.start; if(!max||r.finish>max)max=r.finish; });
+  if(!min){ min=max=p.startDate; }
+  let start=min; while(dow(start)!==1) start=addDays(start,-1);
+  let end=max; while(dow(end)!==0) end=addDays(end,1);
+  const days=[]; let s=start; let g=0; while(parseYMD(s)<=parseYMD(end) && g++<800){ days.push(s); s=addDays(s,1); }
+  return days;
+}
+function ganttPanel(p){
+  const days=ganttWindow(p);
+  const today=fmtYMD(new Date());
+  const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const DW=['S','M','T','W','T','F','S'];
+  // month spans
+  let monthRow=''; let i=0;
+  while(i<days.length){ const m=days[i].slice(0,7); let span=0; while(i+span<days.length && days[i+span].slice(0,7)===m) span++; const d=parseYMD(days[i]); monthRow+=`<th class="lab text-left" colspan="${span}" style="background:#0c1322">${MON[d.getMonth()]} ${d.getFullYear()}</th>`; i+=span; }
+  const dayHead=days.map(d=>{ const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':''; return `<th class="day ${cl}"><div class="text-white/40 text-[9px]">${DW[dow(d)]}</div>${Number(d.slice(8))}</th>`; }).join('');
+  const legend=companyList().map(c=>`<span class="chip" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span><span class="text-xs text-white/60 mr-3">${esc(c.name)}</span>`).join('');
+
+  let body='';
+  sectionList(p).forEach(s=>{
+    body+=`<tr class="secband"><td colspan="${days.length+5}">${esc(s.name)}</td></tr>`;
+    tasksOf(p,s.id).forEach(t=>{
+      const r=state.resolved[t.id]||{}; const c=state.companies[t.companyId]||{color:'#444',letter:'?'};
+      const cells=days.map(d=>{
+        const within = r.start && d>=r.start && d<=r.finish;
+        if(within && isWorkday(d,state.holidays)){ const td=d===today?'today':''; return `<td class="day ${td}" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</td>`; }
+        const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':''; const td=d===today?'today':''; return `<td class="day ${cl} ${td}"></td>`;
+      }).join('');
+      body+=`<tr>
+        <td class="lab tname">${esc(t.name)}</td>
+        <td class="lab mono text-white/60">${esc(fmtMD(r.start))}</td>
+        <td class="lab mono text-white/60">${esc(fmtMD(r.finish))}</td>
+        <td class="lab text-center text-white/60">${t.days}</td>
+        <td class="lab"><span class="chip" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span></td>
+        ${cells}</tr>`;
+    });
+  });
+  return `<div class="card p-3">
+    <div class="flex items-center flex-wrap gap-y-1 mb-2">${legend}</div>
+    <div class="scroll" style="max-height:62vh">
+      <table class="gantt">
+        <thead>
+          <tr><th class="lab tname" style="background:#0c1322" rowspan="2">Task</th><th class="lab" style="background:#0c1322" rowspan="2">Start</th><th class="lab" style="background:#0c1322" rowspan="2">Finish</th><th class="lab" style="background:#0c1322" rowspan="2">Days</th><th class="lab" style="background:#0c1322" rowspan="2">Co.</th>${monthRow}</tr>
+          <tr>${dayHead}</tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+/* ============================================================ SETTINGS */
+function settingsView(p){
+  return `<div class="max-w-[1100px] mx-auto px-4 py-4 space-y-4">
+    <div class="card p-4">
+      <div class="display font-semibold mb-3">Project</div>
+      <div class="grid sm:grid-cols-3 gap-3">
+        <label class="text-xs text-white/50">Name<input class="fld w-full mt-1" value="${esc(p.name)}" onchange="activeProject().name=this.value; render(); saveActive()"></label>
+        <label class="text-xs text-white/50">Subtitle<input class="fld w-full mt-1" value="${esc(p.subtitle||'')}" onchange="activeProject().subtitle=this.value; saveActive()"></label>
+        <label class="text-xs text-white/50">Anchor start<input class="fld w-full mt-1" type="date" value="${esc(p.startDate)}" onchange="activeProject().startDate=this.value; recomputeActive(); render(); saveActive()"></label>
+      </div>
+      <div class="mt-3 flex gap-2">
+        <button class="btn btn-ghost btn-sm" onclick="newProject()"><span class="ms text-[16px]">add</span>New project</button>
+        <button class="btn btn-ghost btn-sm" onclick="syncPours()"><span class="ms text-[16px]">sync</span>Sync pours from Cup (${Object.keys(state.pours).length})</button>
+      </div>
+    </div>
+
+    <div class="card p-4">
+      <div class="display font-semibold mb-3 flex items-center gap-2">Companies <span class="text-xs text-white/40">— the legend</span></div>
+      <div class="space-y-1.5">
+        ${companyList().map(c=>`<div class="flex items-center gap-2">
+          <span class="chip" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span>
+          <input class="fld flex-1" value="${esc(c.name)}" onchange="updCompany('${c.id}','name',this.value)">
+          <input class="fld w-16 text-center" value="${esc(c.letter)}" onchange="updCompany('${c.id}','letter',this.value)">
+          <input type="color" class="fld w-12 p-0 h-8" value="${c.color}" onchange="updCompany('${c.id}','color',this.value)">
+          <button class="icobtn" onclick="delCompany('${c.id}')"><span class="ms text-[16px]">close</span></button>
+        </div>`).join('')}
+      </div>
+      <button class="btn btn-ghost btn-sm mt-3" onclick="addCompany()"><span class="ms text-[16px]">add</span>Add company</button>
+    </div>
+
+    <div class="card p-4">
+      <div class="display font-semibold mb-3">Holidays <span class="text-xs text-white/40">— skipped by working-day math</span></div>
+      <div class="space-y-1.5">
+        ${Object.entries(state.holidays).sort().map(([d,label])=>`<div class="flex items-center gap-2">
+          <span class="fld mono w-36">${esc(d)}</span>
+          <input class="fld flex-1" value="${esc(label)}" onchange="updHoliday('${d}',this.value)">
+          <button class="icobtn" onclick="delHoliday('${d}')"><span class="ms text-[16px]">close</span></button>
+        </div>`).join('') || '<div class="text-white/40 text-sm">No holidays added.</div>'}
+      </div>
+      <div class="flex items-center gap-2 mt-3">
+        <input id="newHolDate" class="fld" type="date">
+        <input id="newHolLabel" class="fld flex-1" placeholder="Label (e.g. Labor Day)">
+        <button class="btn btn-ghost btn-sm" onclick="addHoliday()"><span class="ms text-[16px]">add</span>Add</button>
+      </div>
+    </div>
+
+    <div class="card p-4">
+      <div class="display font-semibold mb-3">Cycle template <span class="text-xs text-white/40">— Insert Cycle uses this</span></div>
+      <div class="space-y-1.5">
+        ${(state.templates.pileCapCycle?.tasks||[]).map((st,i)=>`<div class="flex items-center gap-2">
+          <span class="text-white/30 w-5 text-right text-xs">${i+1}</span>
+          <input class="fld flex-1" value="${esc(st.name)}" onchange="updTpl(${i},'name',this.value)">
+          <input class="fld w-16 text-center" type="number" min="1" value="${st.days}" onchange="updTpl(${i},'days',this.value)">
+          <select class="fld w-40" onchange="updTpl(${i},'companyId',this.value)">${companyList().map(c=>`<option value="${c.id}" ${c.id===st.companyId?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+        </div>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+function updCompany(id,f,v){ state.companies[id][f]=v; saveCompanies(); render(); }
+function delCompany(id){ delete state.companies[id]; saveCompanies(); render(); }
+function addCompany(){ const id=uid('co_'); state.companies[id]={name:'New Co', letter:'X', color:'#888888', order:companyList().length}; saveCompanies(); render(); }
+function updHoliday(d,v){ state.holidays[d]=v; saveHolidays(); }
+function delHoliday(d){ delete state.holidays[d]; saveHolidays(); recomputeActive(); render(); }
+function addHoliday(){ const d=$('#newHolDate').value; const l=$('#newHolLabel').value||'Holiday'; if(!d) return toast('Pick a date','warn'); state.holidays[d]=l; saveHolidays(); recomputeActive(); render(); }
+function updTpl(i,f,v){ if(f==='days') v=Math.max(1,parseInt(v)||1); state.templates.pileCapCycle.tasks[i][f]=v; saveTemplates(); render(); }
+function newProject(){ const name=prompt('Project name:','New Project'); if(!name) return; const pid=uid('p_'); let s=fmtYMD(new Date()); while(dow(s)!==1) s=addDays(s,1); state.projects[pid]={id:pid,name,subtitle:'Look Ahead Schedule',startDate:s,sections:{},tasks:{}}; state.meta.activeProjectId=pid; state.tab='builder'; recomputeActive(); render(); saveActive(); }
+function syncPours(){
+  const p=activeProject(); const yr=Number(p.startDate.slice(0,4)); let n=0;
+  Object.values(p.tasks).forEach(t=>{ if(t.linkedPourId && state.pours[t.linkedPourId]){ const pr=state.pours[t.linkedPourId]; if(pr.date){ const [m,d]=pr.date.split('/').map(Number); t.depMode='manual'; t.start=`${yr}-${pad(m)}-${pad(d)}`; n++; } } });
+  recomputeActive(); render(); saveActive(); toast(n?`Re-synced ${n} linked pour date(s)`:'No linked pours to sync','ok');
+}
+
+/* ============================================================ MODALS */
+function closeModal(){ $('#modal').innerHTML=''; }
+function openInsertCycle(){
+  const p=activeProject();
+  const tplOpts=Object.entries(state.templates).map(([id,t])=>`<option value="${id}">${esc(t.name)}</option>`).join('');
+  const taskOpts=['<option value="">— none (start on a date) —</option>'].concat(
+    sectionList(p).flatMap(s=>tasksOf(p,s.id).map(t=>`<option value="${t.id}">${esc(s.name)} › ${esc(t.name)}</option>`))).join('');
+  $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card p-5 w-full max-w-md">
+    <div class="display font-semibold text-lg mb-3">Insert Cycle</div>
+    <label class="text-xs text-white/50 block mb-2">Template<select id="icTpl" class="fld w-full mt-1">${tplOpts}</select></label>
+    <label class="text-xs text-white/50 block mb-2">New section name<input id="icName" class="fld w-full mt-1" value="Grid line — Pile caps"></label>
+    <label class="text-xs text-white/50 block mb-2">Start after task (chain)<select id="icChain" class="fld w-full mt-1" onchange="document.getElementById('icDateWrap').style.display=this.value?'none':'block'">${taskOpts}</select></label>
+    <div id="icDateWrap"><label class="text-xs text-white/50 block mb-3">First task start<input id="icDate" class="fld w-full mt-1" type="date" value="${esc(p.startDate)}"></label></div>
+    <div class="flex justify-end gap-2"><button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-green" onclick="doInsertCycle()">Insert</button></div>
+  </div></div>`;
+}
+function doInsertCycle(){
+  const p=activeProject(); const tpl=$('#icTpl').value; const name=$('#icName').value||'New Section'; const chain=$('#icChain').value; const date=$('#icDate').value||p.startDate;
+  addCycleTo(p, tpl, name, date, chain||null);
+  recomputeActive(); closeModal(); render(); saveActive(); toast('Cycle inserted','ok');
+}
+function openPourLink(tid){
+  const p=activeProject(); const entries=Object.entries(state.pours);
+  const list = entries.length ? entries.map(([id,pr])=>`<div class="flex items-center justify-between gap-2 px-2 py-1.5 rounded hover:bg-white/5 cursor-pointer" onclick="linkPour('${tid}','${id}')">
+      <span>${esc(pr.label||pr.section||id)} <span class="text-white/40 text-xs">${esc(pr.section||'')}</span></span>
+      <span class="mono text-xs text-white/60">${esc(pr.date||'')}</span></div>`).join('')
+    : '<div class="text-white/40 text-sm p-2">No Cup pours found in Firebase.</div>';
+  $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card p-4 w-full max-w-md">
+    <div class="display font-semibold mb-2">Link Cup pour</div>
+    <div class="text-xs text-white/50 mb-2">Snaps this task to the pour's date (fixed).</div>
+    <div class="space-y-0.5 max-h-72 overflow-auto">${list}</div>
+    <div class="flex justify-between mt-3"><button class="btn btn-ghost btn-sm" onclick="unlinkPour('${tid}')">Unlink</button><button class="btn btn-ghost" onclick="closeModal()">Close</button></div>
+  </div></div>`;
+}
+function linkPour(tid,pid){ const p=activeProject(); const t=p.tasks[tid]; const pr=state.pours[pid]; t.linkedPourId=pid; if(pr&&pr.date){ const yr=Number(p.startDate.slice(0,4)); const [m,d]=pr.date.split('/').map(Number); t.depMode='manual'; t.start=`${yr}-${pad(m)}-${pad(d)}`; } recomputeActive(); closeModal(); render(); saveActive(); toast('Linked to Cup pour','ok'); }
+function unlinkPour(tid){ activeProject().tasks[tid].linkedPourId=null; closeModal(); render(); saveActive(); }
+
+function openExport(){
+  $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card p-5 w-full max-w-sm">
+    <div class="display font-semibold text-lg mb-3">Export schedule</div>
+    <div class="space-y-2">
+      <button class="btn btn-green w-full justify-start" onclick="exportPDF('wide')"><span class="ms">picture_as_pdf</span>PDF — one wide sheet</button>
+      <button class="btn btn-ghost w-full justify-start" onclick="exportPDF('tiled')"><span class="ms">picture_as_pdf</span>PDF — office-printer pages</button>
+      <button class="btn btn-ghost w-full justify-start" onclick="exportXLSX()"><span class="ms">table_view</span>Excel workbook (.xlsx)</button>
+    </div>
+    <div class="flex justify-end mt-4"><button class="btn btn-ghost" onclick="closeModal()">Close</button></div>
+  </div></div>`;
+}
+
+/* ============================================================ EXPORT LIBS */
+function loadScript(src){ return new Promise((res,rej)=>{ if([...document.scripts].some(s=>s.src===src)) return res(); const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+let libsReady=false;
+async function ensureLibs(){ if(libsReady) return; toast('Loading export tools…');
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+  await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+  libsReady=true;
+}
+function isTouch(){ return (navigator.maxTouchPoints||0)>0 || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent); }
+async function sharePdf(blob, filename){
+  const file=new File([blob],filename,{type:'application/pdf'});
+  if(isTouch() && navigator.canShare && navigator.canShare({files:[file]})){ try{ await navigator.share({files:[file],title:filename}); return; }catch(e){ if(e.name==='AbortError') return; } }
+  const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },200);
+}
+
+/* build the row model shared by PDF + XLSX */
+function scheduleRows(p){
+  const rows=[]; // {type:'section'|'task', ...}
+  sectionList(p).forEach(s=>{
+    rows.push({type:'section', name:s.name});
+    tasksOf(p,s.id).forEach(t=>{ const r=state.resolved[t.id]||{}; const c=state.companies[t.companyId]||{}; rows.push({type:'task', name:t.name, start:r.start, finish:r.finish, days:t.days, color:c.color, colorName:c.color, letter:c.letter, companyName:c.name}); });
+  });
+  return rows;
+}
+
+async function exportPDF(mode){
+  closeModal(); const p=activeProject(); recomputeActive();
+  try{ await ensureLibs(); }catch(e){ return toast('Could not load PDF library','err'); }
+  const { jsPDF } = window.jspdf;
+  const days=ganttWindow(p); const rows=scheduleRows(p);
+  const today=fmtYMD(new Date());
+  const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const DW=['S','M','T','W','T','F','S'];
+  const LABELW=[150,52,52,30,40,70]; // Task,Start,Finish,Days,Color,Company
+  const labelTotal=LABELW.reduce((a,b)=>a+b,0);
+  const DAYW=14, ROWH=15, HEADERTOP=96, MARGIN=22;
+
+  // chunk days for tiled mode; one big chunk for wide
+  let chunks;
+  if(mode==='wide'){ chunks=[days]; }
+  else { const perPage=Math.floor((792 - 2*MARGIN - labelTotal)/DAYW); chunks=[]; for(let i=0;i<days.length;i+=perPage) chunks.push(days.slice(i,i+perPage)); }
+
+  function drawHeaderBlock(doc, pageW){
+    // Webcor wordmark
+    doc.setFont('helvetica','bold'); doc.setFontSize(20); doc.setTextColor(63,165,53);
+    doc.text('WEBCOR', MARGIN, 34);
+    doc.setTextColor(120,170,110); doc.setFontSize(13); doc.text('CONCRETE', MARGIN+98, 34);
+    // title
+    doc.setTextColor(20,28,40); doc.setFont('helvetica','bold'); doc.setFontSize(15);
+    doc.text(p.name+' — '+(p.subtitle||'Look Ahead Schedule'), pageW/2, 26, {align:'center'});
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,100,115);
+    doc.text('Exported '+today, pageW-MARGIN, 26, {align:'right'});
+    doc.setDrawColor(63,165,53); doc.setLineWidth(1.2); doc.line(MARGIN, 40, pageW-MARGIN, 40);
+    // legend
+    let lx=MARGIN, ly=54; doc.setFontSize(8);
+    companyList().forEach(c=>{
+      const w=22 + doc.getTextWidth(c.name) + 10;
+      if(lx+w > pageW-MARGIN){ lx=MARGIN; ly+=16; }
+      const [r,g,b]=hexToRgb(c.color); doc.setFillColor(r,g,b); doc.roundedRect(lx, ly-8, 16, 11, 2,2,'F');
+      const to=textOn(c.color)==='#111111'?[17,17,17]:[255,255,255]; doc.setTextColor(...to); doc.setFont('helvetica','bold');
+      doc.text(c.letter, lx+8, ly, {align:'center'});
+      doc.setTextColor(40,48,60); doc.setFont('helvetica','normal'); doc.text(c.name, lx+20, ly);
+      lx += w;
+    });
+  }
+
+  let doc;
+  chunks.forEach((chunk, ci)=>{
+    const pageW = mode==='wide' ? (labelTotal + chunk.length*DAYW + 2*MARGIN) : 792;
+    const bodyRows = rows.length;
+    const pageH = mode==='wide' ? Math.max(612, HEADERTOP + (bodyRows+2)*ROWH + MARGIN) : 612;
+    if(ci===0){ doc=new jsPDF({orientation:'landscape', unit:'pt', format:[pageW,pageH]}); }
+    else { doc.addPage([pageW,pageH],'landscape'); }
+
+    const head1 = [{content:'Task',styles:{halign:'left'}},'Start','Finish','Days','Color','Company'];
+    // month spans + day numbers as two header rows
+    const monthCells=[]; let i=0; while(i<chunk.length){ const m=chunk[i].slice(0,7); let span=0; while(i+span<chunk.length && chunk[i+span].slice(0,7)===m) span++; const d=parseYMD(chunk[i]); monthCells.push({content:MON[d.getMonth()], colSpan:span, styles:{halign:'left',fillColor:[235,238,242]}}); i+=span; }
+    const dayCells=chunk.map(d=>({content:String(Number(d.slice(8))), styles:{fillColor: isHoliday(d,state.holidays)?[250,225,225]:isWeekend(d)?[225,230,238]:[245,247,250]}}));
+    const head=[ head1.concat(monthCells), ['','','','','',''].concat(dayCells) ];
+    // span the 6 label headers across both header rows by using rowSpan on first row & blanks on second
+    head[0]=[{content:'Task',rowSpan:2,styles:{halign:'left',valign:'middle'}},{content:'Start',rowSpan:2,styles:{valign:'middle'}},{content:'Finish',rowSpan:2,styles:{valign:'middle'}},{content:'Days',rowSpan:2,styles:{valign:'middle'}},{content:'Color',rowSpan:2,styles:{valign:'middle'}},{content:'Company',rowSpan:2,styles:{valign:'middle'}}].concat(monthCells);
+    head[1]=dayCells;
+
+    // body
+    const fills={}; // 'rowIdx:colIdx' -> {color, letter}
+    const body=rows.map((row, ri)=>{
+      if(row.type==='section'){ return [{content:row.name, colSpan:6+chunk.length, styles:{fillColor:[31,78,121], textColor:[255,255,255], fontStyle:'bold', halign:'left'}}]; }
+      const dcells=chunk.map((d,j)=>{
+        const within = row.start && d>=row.start && d<=row.finish && isWorkday(d,state.holidays);
+        if(within){ fills[ri+':'+(6+j)]={color:row.color||'#888', letter:row.letter||''}; return ''; }
+        return '';
+      });
+      return [row.name, fmtMD(row.start), fmtMD(row.finish), String(row.days), row.colorName||'', row.companyName||''].concat(dcells);
+    });
+
+    const colStyles={0:{cellWidth:LABELW[0],halign:'left'},1:{cellWidth:LABELW[1],halign:'center'},2:{cellWidth:LABELW[2],halign:'center'},3:{cellWidth:LABELW[3],halign:'center'},4:{cellWidth:LABELW[4],halign:'center'},5:{cellWidth:LABELW[5],halign:'center'}};
+    chunk.forEach((d,j)=>{ colStyles[6+j]={cellWidth: mode==='wide'?DAYW:undefined, halign:'center', fillColor: isHoliday(d,state.holidays)?[250,228,228]:isWeekend(d)?[232,236,242]:[255,255,255]}; });
+
+    doc.autoTable({
+      head, body, startY: HEADERTOP,
+      theme:'grid', styles:{fontSize:7, cellPadding:1.5, lineColor:[210,215,222], lineWidth:0.3, textColor:[40,48,60], overflow:'hidden'},
+      headStyles:{fontSize:6.5, fillColor:[245,247,250], textColor:[40,48,60], lineWidth:0.3},
+      columnStyles: colStyles,
+      margin:{top:HEADERTOP, left:MARGIN, right:MARGIN, bottom:MARGIN},
+      tableWidth: mode==='wide' ? 'wrap' : 'auto',
+      didDrawPage:()=> drawHeaderBlock(doc, doc.internal.pageSize.getWidth()),
+      didDrawCell:(data)=>{
+        if(data.section!=='body') return;
+        const f=fills[data.row.index+':'+data.column.index];
+        if(f){ const [r,g,b]=hexToRgb(f.color); doc.setFillColor(r,g,b); doc.rect(data.cell.x, data.cell.y, data.cell.width, data.cell.height, 'F');
+          const to=textOn(f.color)==='#111111'?[17,17,17]:[255,255,255]; doc.setTextColor(...to); doc.setFont('helvetica','bold'); doc.setFontSize(6.5);
+          doc.text(f.letter, data.cell.x+data.cell.width/2, data.cell.y+data.cell.height/2+2, {align:'center'}); }
+      },
+    });
+  });
+  const blob=doc.output('blob');
+  const stamp=today.split('-'); await sharePdf(blob, `LACC_Look_Ahead_${stamp[1]}.${stamp[2]}.${stamp[0]}.pdf`);
+  toast('PDF ready','ok');
+}
+
+async function exportXLSX(){
+  closeModal(); const p=activeProject(); recomputeActive();
+  try{ await ensureLibs(); }catch(e){ return toast('Could not load Excel library','err'); }
+  const XLSX=window.XLSX; const rows=scheduleRows(p);
+  const head=['Task','Start','Duration (wd)','Finish','Company','Letter','Color'];
+  const aoa=[head];
+  rows.forEach(r=>{ if(r.type==='section') aoa.push([r.name]); else aoa.push([r.name, r.start, r.days, r.finish, r.companyName, r.letter, r.colorName]); });
+  const wsS=XLSX.utils.aoa_to_sheet(aoa); wsS['!cols']=[{wch:34},{wch:12},{wch:12},{wch:12},{wch:14},{wch:8},{wch:12}];
+  const wsC=XLSX.utils.aoa_to_sheet([['Company','Letter','Color'],...companyList().map(c=>[c.name,c.letter,c.color])]); wsC['!cols']=[{wch:16},{wch:8},{wch:12}];
+  const wsH=XLSX.utils.aoa_to_sheet([['Date','Label'],...Object.entries(state.holidays).sort().map(([d,l])=>[d,l])]); wsH['!cols']=[{wch:14},{wch:28}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsS, 'Schedule');
+  XLSX.utils.book_append_sheet(wb, wsC, 'Companies');
+  XLSX.utils.book_append_sheet(wb, wsH, 'Holidays');
+  const today=fmtYMD(new Date()).split('-');
+  XLSX.writeFile(wb, `LACC_Look_Ahead_${today[1]}.${today[2]}.${today[0]}.xlsx`);
+  toast('Excel ready','ok');
+}
+
+/* ============================================================ BOOT */
+function boot(){
+  loadLocal(); ensureActive(); recomputeActive(); render();
+  if(initFirebase()){ state.online=true; attachListeners(); seedIfNeeded().catch(e=>console.warn(e)); }
+  else { state.online=false; }
+  render();
+}
+document.addEventListener('DOMContentLoaded', boot);
+</script>
+</body>
+</html>

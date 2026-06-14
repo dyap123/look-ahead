@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#0a0f1a" />
+<meta name="theme-color" content="#0a1008" />
 <title>SuperYap · Superintendent Suite</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,44 +16,68 @@
 <style>
   /* perf: never paint a blur (matches cup-dashboard CPU rule) */
   *{ backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }
-  html,body{ background:#05070d; color:#e8edf6; font-family:'Inter',system-ui,sans-serif; }
+  /* ===== SuperYap "Deep Obsidian" design system (Stitch) ===== */
+  /* perf: no real backdrop blur (CPU rule); glass faked with layered translucency */
+  *{ backdrop-filter:none !important; -webkit-backdrop-filter:none !important; box-sizing:border-box; }
+  :root{
+    --bg:#0a1008; --surface:#0f150d; --c-low:#171d15; --c:#1b2119; --c-high:#262c23;
+    --on:#dee5d7; --on-var:#becab6; --outline:#899482; --outline-v:#3f4a3b;
+    --primary:#76dd66; --primary-c:#3fa535; --on-primary:#003a01;
+    --blue:#b4c5ff; --blue-c:#0053db; --error:#ffb4ab; --error-c:#93000a;
+  }
+  html,body{ background:var(--bg); color:var(--on); font-family:'Inter',system-ui,sans-serif; }
   body{ margin:0; -webkit-font-smoothing:antialiased; }
-  .display{ font-family:'Space Grotesk',sans-serif; }
-  .mono{ font-family:'JetBrains Mono',monospace; }
+  .display{ font-family:'Space Grotesk',sans-serif; letter-spacing:-0.01em; }
+  .mono{ font-family:'JetBrains Mono',monospace; letter-spacing:-0.01em; }
+  .lcaps{ font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--on-var); }
   .ms{ font-family:'Material Symbols Outlined'; font-weight:normal; font-style:normal; line-height:1; -webkit-font-feature-settings:'liga'; font-feature-settings:'liga'; vertical-align:middle; }
-  .card{ background:linear-gradient(180deg, rgba(20,26,40,.85), rgba(9,12,20,.9)); border:1px solid rgba(150,170,205,.12); border-radius:14px; box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 14px 34px -20px rgba(0,0,0,.7); }
-  input,select{ color-scheme:dark; }
-  .fld{ background:#0c1322; border:1px solid rgba(150,170,205,.18); border-radius:8px; color:#e8edf6; padding:5px 8px; font-size:13px; }
-  .fld:focus{ outline:none; border-color:#3FA535; box-shadow:0 0 0 2px rgba(63,165,53,.25); }
-  .btn{ display:inline-flex; align-items:center; gap:6px; border-radius:9px; padding:7px 12px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:.12s; user-select:none; }
-  .btn-green{ background:#3FA535; color:#04210a; } .btn-green:hover{ background:#5BC04F; }
-  .btn-ghost{ background:rgba(150,170,205,.08); color:#cdd7ea; border-color:rgba(150,170,205,.16); } .btn-ghost:hover{ background:rgba(150,170,205,.16); }
-  .btn-sm{ padding:4px 8px; font-size:12px; border-radius:7px; }
-  .icobtn{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:7px; cursor:pointer; color:#9fb0cc; background:transparent; border:1px solid transparent; }
-  .icobtn:hover{ background:rgba(150,170,205,.14); color:#e8edf6; }
-  .chip{ display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; }
-  .tabbtn{ padding:8px 16px; border-radius:10px; font-weight:600; font-size:14px; cursor:pointer; color:#9fb0cc; }
-  .tabbtn.on{ background:#3FA535; color:#04210a; }
+  .card{ background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.10); border-radius:8px; }
+  .card.glass2{ background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.16); border-radius:12px; box-shadow:0 24px 60px -24px #000; }
+  input,select,textarea{ color-scheme:dark; }
+  .fld{ background:rgba(255,255,255,.04); border:1px solid var(--outline-v); border-radius:4px; color:var(--on); padding:6px 9px; font-size:13px; }
+  .fld:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 2px rgba(118,221,102,.22); }
+  .btn{ display:inline-flex; align-items:center; gap:6px; border-radius:8px; padding:7px 13px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:.12s; user-select:none; }
+  .btn-green{ background:var(--primary); color:var(--on-primary); font-weight:700; } .btn-green:hover{ background:#92fb7f; }
+  .btn-ghost{ background:transparent; color:var(--on); border-color:var(--outline-v); } .btn-ghost:hover{ background:rgba(255,255,255,.05); border-color:var(--outline); }
+  .btn-sm{ padding:4px 9px; font-size:12px; border-radius:6px; }
+  .icobtn{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:6px; cursor:pointer; color:var(--on-var); background:transparent; border:1px solid transparent; }
+  .icobtn:hover{ background:rgba(255,255,255,.06); color:var(--on); }
+  .chip{ display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; }
+  .codot{ width:24px; height:24px; min-width:24px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; }
+  .tabbtn{ padding:7px 13px; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer; color:var(--on-var); transition:.12s; }
+  .tabbtn:hover{ color:var(--on); }
+  .tabbtn.on{ background:rgba(118,221,102,.14); color:var(--primary); box-shadow:inset 0 0 0 1px rgba(118,221,102,.3); }
+  .seg{ display:inline-flex; background:rgba(0,0,0,.35); border:1px solid var(--outline-v); border-radius:8px; padding:3px; gap:3px; }
+  /* data tables */
+  .dt{ width:100%; border-collapse:collapse; font-size:13px; }
+  .dt thead th{ position:sticky; top:0; background:#10160e; z-index:2; text-align:left; padding:8px; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--on-var); border-bottom:1px solid var(--outline-v); }
+  .dt tbody td{ padding:5px 8px; border-bottom:1px solid rgba(255,255,255,.05); }
+  .dt tbody tr:nth-child(even){ background:rgba(255,255,255,.02); }
+  .dt tbody tr:hover{ background:rgba(255,255,255,.05); }
   /* gantt */
   .gantt{ border-collapse:separate; border-spacing:0; font-size:11px; }
-  .gantt th,.gantt td{ border-right:1px solid rgba(150,170,205,.08); border-bottom:1px solid rgba(150,170,205,.08); }
+  .gantt th,.gantt td{ border-right:1px solid rgba(255,255,255,.06); border-bottom:1px solid rgba(255,255,255,.06); }
   .gantt .day{ width:24px; min-width:24px; max-width:24px; height:26px; text-align:center; padding:0; font-family:'JetBrains Mono',monospace; font-weight:700; }
   .gantt .lab{ padding:4px 8px; white-space:nowrap; }
-  .gantt .tname{ position:sticky; left:0; z-index:3; background:#0a0f1a; min-width:180px; max-width:240px; overflow:hidden; text-overflow:ellipsis; }
+  .gantt .tname{ position:sticky; left:0; z-index:3; background:#10160e; min-width:180px; max-width:240px; overflow:hidden; text-overflow:ellipsis; }
   .gantt thead .tname{ z-index:5; }
-  .gantt .wknd{ background:rgba(120,140,180,.12); }
-  .gantt .hol{ background:rgba(229,57,53,.14); }
-  .gantt .secband td{ background:#1f4e79; color:#fff; font-weight:700; padding:5px 10px; position:sticky; left:0; }
-  .gantt .today{ box-shadow:inset 2px 0 0 #FFBF00; }
+  .gantt thead th{ background:#10160e; }
+  .gantt .wknd{ background:rgba(137,148,130,.12); }
+  .gantt .hol{ background:rgba(255,180,171,.14); }
+  .gantt .secband td{ background:rgba(0,83,219,.22); color:#dbe1ff; font-weight:700; padding:5px 10px; position:sticky; left:0; border-left:3px solid var(--blue-c); }
+  .gantt .today{ box-shadow:inset 2px 0 0 var(--blue); }
   .scroll{ overflow:auto; }
-  .scroll::-webkit-scrollbar{ height:10px; width:10px; } .scroll::-webkit-scrollbar-thumb{ background:rgba(150,170,205,.3); border-radius:6px; }
+  .scroll::-webkit-scrollbar{ height:10px; width:10px; } .scroll::-webkit-scrollbar-thumb{ background:rgba(137,148,130,.35); border-radius:6px; }
   /* editor rows */
-  .trow{ display:grid; grid-template-columns: 26px 1fr 34px 116px 116px 66px 150px auto; gap:6px; align-items:center; padding:5px 8px; border-bottom:1px solid rgba(150,170,205,.07); }
-  .trow:hover{ background:rgba(150,170,205,.04); }
-  @media (max-width:880px){ .trow{ grid-template-columns: 22px 1fr 30px 100px 64px 120px auto; } .trow .col-finish{ display:none; } }
-  .modalwrap{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px; }
-  .toast{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); padding:10px 16px; border-radius:10px; font-weight:600; font-size:13px; z-index:80; box-shadow:0 10px 30px -10px #000; }
-  .seg{ display:inline-flex; background:rgba(150,170,205,.08); border-radius:12px; padding:4px; gap:4px; }
+  .secband-edit{ display:flex; align-items:center; gap:8px; padding:8px 12px; background:rgba(180,197,255,.06); border-left:3px solid var(--blue-c); }
+  .trow{ display:grid; grid-template-columns: 18px 1fr 44px 104px 104px 40px 156px auto; gap:8px; align-items:center; padding:5px 10px; border-bottom:1px solid rgba(255,255,255,.05); }
+  .trow:nth-child(even){ background:rgba(255,255,255,.015); }
+  .trow:hover{ background:rgba(255,255,255,.04); }
+  .trow .handle{ color:var(--outline-v); cursor:grab; opacity:0; }
+  .trow:hover .handle{ opacity:1; }
+  @media (max-width:880px){ .trow{ grid-template-columns: 16px 1fr 38px 96px 40px 130px auto; gap:6px; } .trow .col-finish{ display:none; } }
+  .modalwrap{ position:fixed; inset:0; background:rgba(0,0,0,.66); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px; }
+  .toast{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); padding:10px 16px; border-radius:8px; font-weight:600; font-size:13px; z-index:80; box-shadow:0 10px 30px -10px #000; }
 </style>
 </head>
 <body>
@@ -313,7 +337,7 @@ function header(){
   const projOpts=Object.entries(state.projects).map(([id,pr])=>`<option value="${id}" ${id===activeId()?'selected':''}>${esc(pr.name)}</option>`).join('');
   const nav=(id,label,icon)=>`<div class="tabbtn flex items-center gap-1 ${state.nav===id?'on':''}" onclick="setNav('${id}')"><span class="ms text-[16px]">${icon}</span><span class="hidden sm:inline">${label}</span></div>`;
   return `
-  <div class="sticky top-0 z-30" style="background:linear-gradient(180deg,#0a1e0c,#07120a); border-bottom:1px solid rgba(63,165,53,.3)">
+  <div class="sticky top-0 z-30" style="background:linear-gradient(180deg,#10160e,#0a1008); border-bottom:1px solid var(--outline-v)">
     <div class="max-w-[1500px] mx-auto px-4 py-2.5 flex items-center gap-3 flex-wrap">
       <div class="flex items-center gap-2">
         <div class="display font-bold text-lg tracking-tight text-white">Super<span style="color:#3FA535">Yap</span></div>
@@ -356,16 +380,16 @@ function editorPanel(p){
   return secs.map(s=>{
     const rows=tasksOf(p,s.id).map(t=>taskRow(p,t)).join('');
     return `<div class="card mb-4 overflow-hidden">
-      <div class="flex items-center gap-2 px-3 py-2" style="background:#1f4e79">
-        <span class="ms text-white/70">drag_indicator</span>
-        <input class="fld bg-transparent border-transparent font-semibold text-white flex-1" value="${esc(s.name)}" onchange="renameSection('${s.id}', this.value)">
-        <button class="icobtn text-white/80" title="Move up" onclick="moveSection('${s.id}',-1)"><span class="ms text-[18px]">arrow_upward</span></button>
-        <button class="icobtn text-white/80" title="Move down" onclick="moveSection('${s.id}',1)"><span class="ms text-[18px]">arrow_downward</span></button>
+      <div class="secband-edit">
+        <span class="ms" style="color:var(--blue);font-size:18px">view_week</span>
+        <input class="fld display font-semibold flex-1" style="background:transparent;border-color:transparent;color:var(--on);font-size:15px" value="${esc(s.name)}" onchange="renameSection('${s.id}', this.value)">
+        <button class="icobtn" title="Move up" onclick="moveSection('${s.id}',-1)"><span class="ms text-[18px]">arrow_upward</span></button>
+        <button class="icobtn" title="Move down" onclick="moveSection('${s.id}',1)"><span class="ms text-[18px]">arrow_downward</span></button>
         <button class="btn btn-ghost btn-sm" onclick="addTask('${s.id}')"><span class="ms text-[16px]">add</span>Task</button>
-        <button class="icobtn text-white/80" title="Delete section" onclick="delSection('${s.id}')"><span class="ms text-[18px]">delete</span></button>
+        <button class="icobtn" title="Delete section" onclick="delSection('${s.id}')"><span class="ms text-[18px]">delete</span></button>
       </div>
-      <div class="trow text-[11px] uppercase tracking-wide text-white/40">
-        <div></div><div>Task</div><div class="text-center">Days</div><div>Start</div><div class="col-finish">Finish</div><div>Chain</div><div>Company</div><div></div>
+      <div class="trow lcaps">
+        <div></div><div>Name</div><div class="text-center">Days</div><div>Start</div><div class="col-finish">Finish</div><div class="text-center">Link</div><div>Company</div><div></div>
       </div>
       ${rows}
     </div>`;
@@ -376,27 +400,25 @@ function taskRow(p,t){
   const r=state.resolved[t.id]||{}; const chained=t.depMode==='afterPrev';
   const opts=companyList().map(c=>`<option value="${c.id}" ${c.id===t.companyId?'selected':''}>${esc(c.name)}</option>`).join('');
   const c=state.companies[t.companyId];
-  const linked = t.linkedPourId ? `<span class="chip" title="Linked to Cup pour" style="background:#4A8EFF22;color:#9ec5ff">⛓ Cup</span>` : '';
   return `<div class="trow">
-    <div class="flex flex-col">
-      <button class="icobtn" style="height:14px" onclick="moveTask('${t.id}',-1)"><span class="ms text-[14px]">expand_less</span></button>
-      <button class="icobtn" style="height:14px" onclick="moveTask('${t.id}',1)"><span class="ms text-[14px]">expand_more</span></button>
+    <div class="flex flex-col items-center handle">
+      <button class="icobtn" style="width:16px;height:12px" title="Move up" onclick="moveTask('${t.id}',-1)"><span class="ms" style="font-size:13px">expand_less</span></button>
+      <button class="icobtn" style="width:16px;height:12px" title="Move down" onclick="moveTask('${t.id}',1)"><span class="ms" style="font-size:13px">expand_more</span></button>
     </div>
     <input class="fld" value="${esc(t.name)}" onchange="changeTaskField('${t.id}','name',this.value)">
-    <input class="fld text-center" type="number" min="1" value="${t.days}" onchange="changeTaskField('${t.id}','days',this.value)">
+    <input class="fld mono text-center" type="number" min="1" value="${t.days}" title="Working days" onchange="changeTaskField('${t.id}','days',this.value)">
     ${chained
-      ? `<div class="fld text-white/45 flex items-center" title="Auto from previous task">${esc(r.start||'')}</div>`
-      : `<input class="fld" type="date" value="${esc(t.start||r.start||p.startDate)}" onchange="changeTaskField('${t.id}','start',this.value)">`}
-    <div class="fld col-finish text-white/55 flex items-center">${esc(r.finish||'')}</div>
-    <button class="btn btn-ghost btn-sm justify-center" title="${chained?'Chained to previous — click for fixed date':'Fixed date — click to chain'}" onclick="toggleDep('${t.id}')">
-      <span class="ms text-[16px]">${chained?'link':'push_pin'}</span>${chained?'Chain':'Fixed'}</button>
-    <div class="flex items-center gap-1">
-      <span class="chip" style="background:${c?c.color:'#444'};color:${c?textOn(c.color):'#fff'}">${c?esc(c.letter):'?'}</span>
-      <select class="fld flex-1" onchange="changeTaskField('${t.id}','companyId',this.value)">${opts}</select>
+      ? `<div class="fld mono flex items-center" style="color:var(--on-var);opacity:.7" title="Auto from previous task">${esc(fmtMD(r.start))}</div>`
+      : `<input class="fld mono" type="date" value="${esc(t.start||r.start||p.startDate)}" onchange="changeTaskField('${t.id}','start',this.value)">`}
+    <div class="fld mono col-finish flex items-center" style="color:var(--on-var);opacity:.7">${esc(fmtMD(r.finish))}</div>
+    <button class="icobtn" title="${chained?'Chained to previous task — click for a fixed date':'Fixed date — click to chain to previous'}" onclick="toggleDep('${t.id}')" style="${chained?'color:var(--primary)':''}">
+      <span class="ms text-[18px]">${chained?'link':'push_pin'}</span></button>
+    <div class="flex items-center gap-1.5">
+      <span class="codot" style="background:${c?c.color:'#444'};color:${c?textOn(c.color):'#fff'}">${c?esc(c.letter):'?'}</span>
+      <select class="fld flex-1" style="border-color:transparent;background:transparent" onchange="changeTaskField('${t.id}','companyId',this.value)">${opts}</select>
     </div>
-    <div class="flex items-center gap-1 justify-end">
-      ${linked}
-      <button class="icobtn" title="Link Cup pour" onclick="openPourLink('${t.id}')"><span class="ms text-[16px]">link</span></button>
+    <div class="flex items-center gap-0.5 justify-end">
+      <button class="icobtn" title="Link Cup pour" onclick="openPourLink('${t.id}')" style="${t.linkedPourId?'color:var(--blue)':''}"><span class="ms text-[16px]">${t.linkedPourId?'link':'add_link'}</span></button>
       <button class="icobtn" title="Duplicate" onclick="dupTask('${t.id}')"><span class="ms text-[16px]">content_copy</span></button>
       <button class="icobtn" title="Delete" onclick="delTask('${t.id}')"><span class="ms text-[16px]">close</span></button>
     </div>
@@ -420,7 +442,7 @@ function ganttPanel(p){
   const DW=['S','M','T','W','T','F','S'];
   // month spans
   let monthRow=''; let i=0;
-  while(i<days.length){ const m=days[i].slice(0,7); let span=0; while(i+span<days.length && days[i+span].slice(0,7)===m) span++; const d=parseYMD(days[i]); monthRow+=`<th class="lab text-left" colspan="${span}" style="background:#0c1322">${MON[d.getMonth()]} ${d.getFullYear()}</th>`; i+=span; }
+  while(i<days.length){ const m=days[i].slice(0,7); let span=0; while(i+span<days.length && days[i+span].slice(0,7)===m) span++; const d=parseYMD(days[i]); monthRow+=`<th class="lab text-left" colspan="${span}" style="background:#10160e">${MON[d.getMonth()]} ${d.getFullYear()}</th>`; i+=span; }
   const dayHead=days.map(d=>{ const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':''; return `<th class="day ${cl}"><div class="text-white/40 text-[9px]">${DW[dow(d)]}</div>${Number(d.slice(8))}</th>`; }).join('');
   const legend=companyList().map(c=>`<span class="chip" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span><span class="text-xs text-white/60 mr-3">${esc(c.name)}</span>`).join('');
 
@@ -448,7 +470,7 @@ function ganttPanel(p){
     <div class="scroll" style="max-height:62vh">
       <table class="gantt">
         <thead>
-          <tr><th class="lab tname" style="background:#0c1322" rowspan="2">Task</th><th class="lab" style="background:#0c1322" rowspan="2">Start</th><th class="lab" style="background:#0c1322" rowspan="2">Finish</th><th class="lab" style="background:#0c1322" rowspan="2">Days</th><th class="lab" style="background:#0c1322" rowspan="2">Co.</th>${monthRow}</tr>
+          <tr><th class="lab tname" style="background:#10160e" rowspan="2">Task</th><th class="lab" style="background:#10160e" rowspan="2">Start</th><th class="lab" style="background:#10160e" rowspan="2">Finish</th><th class="lab" style="background:#10160e" rowspan="2">Days</th><th class="lab" style="background:#10160e" rowspan="2">Co.</th>${monthRow}</tr>
           <tr>${dayHead}</tr>
         </thead>
         <tbody>${body}</tbody>
@@ -779,8 +801,8 @@ function attendanceView(){
     </div>
     <div class="card overflow-hidden">
       <div class="scroll" style="max-height:70vh">
-        <table class="w-full text-[13px]" style="border-collapse:collapse">
-          <thead class="text-left text-[11px] uppercase tracking-wide text-white/40" style="position:sticky;top:0;background:#0c1322">
+        <table class="dt">
+          <thead>
             <tr><th class="px-2 py-2">Name</th><th class="px-2 py-2">Role</th><th class="px-2 py-2">Foreman</th><th class="px-2 py-2">Area</th><th class="px-2 py-2">In</th><th class="px-2 py-2">Out</th><th class="px-2 py-2 text-center">Hrs</th><th class="px-2 py-2 text-center">L/B</th><th class="px-2 py-2 text-center">Safety</th><th class="px-2 py-2">Signature</th></tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -822,8 +844,8 @@ function toolsTableHTML(){
       <td class="px-2 py-1.5 text-right mono text-white/60">${a.unit_cost?'$'+a.unit_cost:''}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="8" class="px-3 py-6 text-center text-white/40">No tools match.</td></tr>`;
-  return `<table class="w-full text-[13px]" style="border-collapse:collapse">
-    <thead class="text-left text-[11px] uppercase tracking-wide text-white/40" style="position:sticky;top:0;background:#0c1322">
+  return `<table class="dt">
+    <thead>
       <tr><th class="px-2 py-2">Item ID</th><th class="px-2 py-2">Description</th><th class="px-2 py-2">Category</th><th class="px-2 py-2 text-center">Qty</th><th class="px-2 py-2">Status</th><th class="px-2 py-2">Assigned To</th><th class="px-2 py-2 text-center">Verified</th><th class="px-2 py-2 text-right">Monthly</th></tr>
     </thead><tbody>${rows}</tbody></table>
     <div class="px-2 py-2 text-xs text-white/40">${list.length} shown</div>`;
@@ -858,9 +880,9 @@ function toolsView(){
 
 /* small shared UI bits */
 function statCard(label, val, icon, accent){
-  return `<div class="card px-3 py-2 flex items-center gap-2">
-    <span class="ms text-[20px]" style="color:${accent||'#3FA535'}">${icon}</span>
-    <div><div class="text-[10px] uppercase tracking-wide text-white/40">${label}</div><div class="display font-bold text-lg" style="color:${accent||'#e8edf6'}">${val}</div></div></div>`;
+  return `<div class="card px-3.5 py-2 flex items-center gap-2.5">
+    <span class="ms text-[20px]" style="color:${accent||'var(--primary)'}">${icon}</span>
+    <div><div class="lcaps" style="font-size:10px">${label}</div><div class="display font-bold text-lg" style="color:${accent||'var(--on)'}">${val}</div></div></div>`;
 }
 function shellMsg(icon,title,sub){ return `<div class="max-w-[1500px] mx-auto px-4 py-16 text-center text-white/50">
   <span class="ms text-[40px] text-white/30">${icon}</span><div class="display font-semibold text-lg mt-2">${title}</div><div class="text-sm mt-1">${sub}</div></div>`; }

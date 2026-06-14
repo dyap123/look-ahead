@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#0a1008" />
+<meta name="theme-color" content="#0a1017" />
 <title>SuperYap · Superintendent Suite</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -20,10 +20,11 @@
   /* perf: no real backdrop blur (CPU rule); glass faked with layered translucency */
   *{ backdrop-filter:none !important; -webkit-backdrop-filter:none !important; box-sizing:border-box; }
   :root{
-    --bg:#0a1008; --surface:#0f150d; --c-low:#171d15; --c:#1b2119; --c-high:#262c23;
-    --on:#dee5d7; --on-var:#becab6; --outline:#899482; --outline-v:#3f4a3b;
-    --primary:#76dd66; --primary-c:#3fa535; --on-primary:#003a01;
-    --blue:#b4c5ff; --blue-c:#0053db; --error:#ffb4ab; --error-c:#93000a;
+    /* Dodgers "Deep Obsidian Blue" */
+    --bg:#0a1017; --surface:#0d131a; --c-low:#11171f; --c:#141b24; --c-high:#1c2632;
+    --on:#dbe4ef; --on-var:#97a6bb; --outline:#46566b; --outline-v:#27313f;
+    --primary:#2f80ed; --primary-c:#0053db; --on-primary:#ffffff;
+    --blue:#8fc2f2; --blue-c:#0053db; --error:#ffb4ab; --error-c:#93000a;
   }
   html,body{ background:var(--bg); color:var(--on); font-family:'Inter',system-ui,sans-serif; }
   body{ margin:0; -webkit-font-smoothing:antialiased; }
@@ -35,9 +36,9 @@
   .card.glass2{ background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.16); border-radius:12px; box-shadow:0 24px 60px -24px #000; }
   input,select,textarea{ color-scheme:dark; }
   .fld{ background:rgba(255,255,255,.04); border:1px solid var(--outline-v); border-radius:4px; color:var(--on); padding:6px 9px; font-size:13px; }
-  .fld:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 2px rgba(118,221,102,.22); }
+  .fld:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 2px rgba(47,128,237,.25); }
   .btn{ display:inline-flex; align-items:center; gap:6px; border-radius:8px; padding:7px 13px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:.12s; user-select:none; }
-  .btn-green{ background:var(--primary); color:var(--on-primary); font-weight:700; } .btn-green:hover{ background:#92fb7f; }
+  .btn-green{ background:var(--primary); color:var(--on-primary); font-weight:700; } .btn-green:hover{ background:#4a9bf0; }
   .btn-ghost{ background:transparent; color:var(--on); border-color:var(--outline-v); } .btn-ghost:hover{ background:rgba(255,255,255,.05); border-color:var(--outline); }
   .btn-sm{ padding:4px 9px; font-size:12px; border-radius:6px; }
   .icobtn{ display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:6px; cursor:pointer; color:var(--on-var); background:transparent; border:1px solid transparent; }
@@ -46,7 +47,7 @@
   .codot{ width:24px; height:24px; min-width:24px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; }
   .tabbtn{ padding:7px 13px; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer; color:var(--on-var); transition:.12s; }
   .tabbtn:hover{ color:var(--on); }
-  .tabbtn.on{ background:rgba(118,221,102,.14); color:var(--primary); box-shadow:inset 0 0 0 1px rgba(118,221,102,.3); }
+  .tabbtn.on{ background:rgba(47,128,237,.16); color:var(--blue); box-shadow:inset 0 0 0 1px rgba(47,128,237,.4); }
   .seg{ display:inline-flex; background:rgba(0,0,0,.35); border:1px solid var(--outline-v); border-radius:8px; padding:3px; gap:3px; }
   /* data tables */
   .dt{ width:100%; border-collapse:collapse; font-size:13px; }
@@ -337,10 +338,10 @@ function header(){
   const projOpts=Object.entries(state.projects).map(([id,pr])=>`<option value="${id}" ${id===activeId()?'selected':''}>${esc(pr.name)}</option>`).join('');
   const nav=(id,label,icon)=>`<div class="tabbtn flex items-center gap-1 ${state.nav===id?'on':''}" onclick="setNav('${id}')"><span class="ms text-[16px]">${icon}</span><span class="hidden sm:inline">${label}</span></div>`;
   return `
-  <div class="sticky top-0 z-30" style="background:linear-gradient(180deg,#10160e,#0a1008); border-bottom:1px solid var(--outline-v)">
+  <div class="sticky top-0 z-30" style="background:linear-gradient(180deg,#101a28,#0a1017); border-bottom:1px solid var(--outline-v)">
     <div class="max-w-[1500px] mx-auto px-4 py-2.5 flex items-center gap-3 flex-wrap">
       <div class="flex items-center gap-2">
-        <div class="display font-bold text-lg tracking-tight text-white">Super<span style="color:#3FA535">Yap</span></div>
+        <div class="display font-bold text-lg tracking-tight text-white">Super<span style="color:#4a9bf0">Yap</span></div>
         <span class="text-[9px] uppercase tracking-widest text-white/35 hidden md:block leading-3">Superintendent<br>Suite</span>
       </div>
       <div class="seg ml-1 flex-wrap">
@@ -352,7 +353,7 @@ function header(){
       <div class="ml-auto flex items-center gap-2 flex-wrap">
         ${state.nav==='schedule' ? `<select class="fld" onchange="state.meta.activeProjectId=this.value; recomputeActive(); render(); saveActive()">${projOpts}</select>
         <button class="btn btn-green" onclick="openExport()"><span class="ms">ios_share</span>Export</button>` : ''}
-        <span class="text-xs px-2 py-1 rounded-full ${state.online?'text-green-300':'text-amber-300'}" style="background:rgba(150,170,205,.1)">
+        <span class="text-xs px-2 py-1 rounded-full ${state.online?'text-sky-300':'text-amber-300'}" style="background:rgba(150,170,205,.1)">
           <span class="ms text-[14px]">${state.online?'cloud_done':'cloud_off'}</span> ${state.online?'Synced':'Offline'}</span>
       </div>
     </div>

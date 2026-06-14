@@ -1,12 +1,22 @@
-# WEBCOR · Look-Ahead Schedule Builder
+# SuperYap — Superintendent Suite
 
-A fast, clean look-ahead schedule builder for the field. Build a foundation
-schedule in minutes, see a live WYSIWYG Gantt, and export a polished
-Webcor-branded PDF or an Excel workbook the rest of the team can read at a glance.
+An all-in-one field suite for construction superintendents, on the shared OpenYap
+Firebase. Scheduling is the first feature; Attendance and Tools read live from the
+sibling apps so the super sees everything in one place.
 
 **Live:** https://dyap123.github.io/look-ahead/
 
-## Why
+## Tabs
+
+- **Schedule** — the look-ahead builder (see below). Webcor-branded PDF + Excel export.
+- **Attendance** — live, read-only view of the daily sign-ins foremen submit in the
+  Foreman Sign-In app (`foreman-attendance/`): who signed in per day, time in/out,
+  hours, lunch/break, injury flag, and signature.
+- **Tools** — live, read-only view of the tool inventory (`tool-tracker/assets`):
+  search/filter by status, on-site count, monthly charge, lost count.
+- **Settings** — schedule companies (legend), holidays, and the cycle template.
+
+## Schedule — why
 
 Replaces the hand-maintained `ULTIMATE GANTT SCHEDULE TEMPLATE.xlsx` workflow.
 Two goals: stop the schedule from looking like "eye cancer," and make date entry

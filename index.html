@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0a0f1a" />
-<title>WEBCOR · Look-Ahead</title>
+<title>SuperYap · Superintendent Suite</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
@@ -65,9 +65,11 @@
 /* ============================================================ STATE */
 const NS = 'look-ahead-schedule';
 const state = {
-  tab: 'builder',
+  nav: 'schedule',
   companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
   resolved: {}, online: false, showPreview: true, seeded: false,
+  tools: { assets:{}, config:{}, loaded:false, q:'', status:'all' },
+  att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
 };
 
 /* ============================================================ HELPERS */
@@ -216,6 +218,7 @@ function recomputeActive(){
 
 /* ============================================================ FIREBASE */
 const FIREBASE_CONFIG = { databaseURL: localStorage.getItem('la_firebase_url') || 'https://gen-lang-client-0119642855-default-rtdb.firebaseio.com' };
+const DBURL = FIREBASE_CONFIG.databaseURL;
 let db=null;
 function initFirebase(){ try{ if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG); db=firebase.database(); return true; }catch(e){ console.error('fb init',e); return false; } }
 const fb = {
@@ -253,7 +256,7 @@ function attachListeners(){
   fb.listen('templates', v=>{ if(v){ state.templates=v; saveLocal(); } });
   fb.listen('meta',      v=>{ if(v){ state.meta=v; ensureActive(); recomputeActive(); render(); } });
   fb.listen('projects',  v=>{ state.projects=v||{}; ensureActive(); recomputeActive(); saveLocal(); render(); });
-  if(db) db.ref('pours-user').on('value', s=>{ state.pours=s.val()||{}; if(state.tab==='builder') render(); });
+  if(db) db.ref('pours-user').on('value', s=>{ state.pours=s.val()||{}; if(state.nav==='schedule') render(); });
 }
 
 /* ============================================================ MUTATIONS */
@@ -297,23 +300,37 @@ function moveSection(sid,dir){ const p=activeProject(); const arr=sectionList(p)
 function render(){
   ensureActive(); if(!Object.keys(state.resolved).length) recomputeActive();
   const p=activeProject();
-  $('#app').innerHTML = header() + (state.tab==='builder' ? builderView(p) : settingsView(p));
+  let view;
+  if(state.nav==='attendance') view=attendanceView();
+  else if(state.nav==='tools') view=toolsView();
+  else if(state.nav==='settings') view=settingsView(p);
+  else view=builderView(p);
+  $('#app').innerHTML = header() + view;
 }
+function setNav(id){ state.nav=id; render(); if(id==='attendance') ensureAttendance(); if(id==='tools') ensureTools(); }
 function header(){
   const p=activeProject();
   const projOpts=Object.entries(state.projects).map(([id,pr])=>`<option value="${id}" ${id===activeId()?'selected':''}>${esc(pr.name)}</option>`).join('');
+  const nav=(id,label,icon)=>`<div class="tabbtn flex items-center gap-1 ${state.nav===id?'on':''}" onclick="setNav('${id}')"><span class="ms text-[16px]">${icon}</span><span class="hidden sm:inline">${label}</span></div>`;
   return `
   <div class="sticky top-0 z-30" style="background:linear-gradient(180deg,#0a1e0c,#07120a); border-bottom:1px solid rgba(63,165,53,.3)">
     <div class="max-w-[1500px] mx-auto px-4 py-2.5 flex items-center gap-3 flex-wrap">
-      <div class="display font-bold text-lg tracking-tight" style="color:#3FA535">WEBCOR<span class="text-white/90 font-medium"> · Look-Ahead</span></div>
-      <select class="fld ml-1" onchange="state.meta.activeProjectId=this.value; recomputeActive(); render(); saveActive()">${projOpts}</select>
-      <div class="seg ml-auto">
-        <div class="tabbtn ${state.tab==='builder'?'on':''}" onclick="state.tab='builder'; render()">Builder</div>
-        <div class="tabbtn ${state.tab==='settings'?'on':''}" onclick="state.tab='settings'; render()">Settings</div>
+      <div class="flex items-center gap-2">
+        <div class="display font-bold text-lg tracking-tight text-white">Super<span style="color:#3FA535">Yap</span></div>
+        <span class="text-[9px] uppercase tracking-widest text-white/35 hidden md:block leading-3">Superintendent<br>Suite</span>
       </div>
-      <button class="btn btn-green" onclick="openExport()"><span class="ms">ios_share</span>Export</button>
-      <span class="text-xs px-2 py-1 rounded-full ${state.online?'text-green-300':'text-amber-300'}" style="background:rgba(150,170,205,.1)">
-        <span class="ms text-[14px]">${state.online?'cloud_done':'cloud_off'}</span> ${state.online?'Synced':'Offline'}</span>
+      <div class="seg ml-1 flex-wrap">
+        ${nav('schedule','Schedule','calendar_month')}
+        ${nav('attendance','Attendance','how_to_reg')}
+        ${nav('tools','Tools','handyman')}
+        ${nav('settings','Settings','settings')}
+      </div>
+      <div class="ml-auto flex items-center gap-2 flex-wrap">
+        ${state.nav==='schedule' ? `<select class="fld" onchange="state.meta.activeProjectId=this.value; recomputeActive(); render(); saveActive()">${projOpts}</select>
+        <button class="btn btn-green" onclick="openExport()"><span class="ms">ios_share</span>Export</button>` : ''}
+        <span class="text-xs px-2 py-1 rounded-full ${state.online?'text-green-300':'text-amber-300'}" style="background:rgba(150,170,205,.1)">
+          <span class="ms text-[14px]">${state.online?'cloud_done':'cloud_off'}</span> ${state.online?'Synced':'Offline'}</span>
+      </div>
     </div>
   </div>`;
 }
@@ -701,6 +718,152 @@ async function exportXLSX(){
   XLSX.writeFile(wb, `LACC_Look_Ahead_${today[1]}.${today[2]}.${today[0]}.xlsx`);
   toast('Excel ready','ok');
 }
+
+/* ============================================================ ATTENDANCE (reads foreman-attendance/) */
+function ensureAttendance(){
+  if(state.att.loaded || state.att.loading) return;
+  if(!db){ render(); return; }
+  state.att.loading=true;
+  db.ref('foreman-attendance/foremen').on('value', s=>{ state.att.foremen=s.val()||{}; if(state.nav==='attendance') render(); });
+  db.ref('foreman-attendance/members').on('value', s=>{ state.att.members=s.val()||{}; if(state.nav==='attendance') render(); });
+  db.ref('foreman-attendance/areas').on('value',   s=>{ state.att.areas=s.val()||{};   if(state.nav==='attendance') render(); });
+  fetch(DBURL+'/foreman-attendance/attendance.json?shallow=true').then(r=>r.json()).then(d=>{
+    state.att.dates=Object.keys(d||{}).sort().reverse(); state.att.date=state.att.dates[0]||''; state.att.loaded=true; state.att.loading=false;
+    if(state.att.date) loadAttDay(state.att.date); else render();
+  }).catch(()=>{ state.att.loaded=true; state.att.loading=false; render(); });
+}
+function loadAttDay(date){
+  state.att.date=date; render();
+  fetch(DBURL+'/foreman-attendance/attendance/'+date+'.json').then(r=>r.json()).then(d=>{ state.att.records=d||{}; render(); }).catch(()=>{ state.att.records={}; render(); });
+}
+function attPerson(pid){
+  const f=state.att.foremen[pid]; if(f) return {name:f.name, role:'Foreman', cls:f.classification||'', areaId:f.area, crew:f.name};
+  const m=state.att.members[pid]; if(m){ const fm=state.att.foremen[m.foremanId]||{}; return {name:m.name, role:'Crew', cls:m.classification||'', areaId:fm.area, crew:fm.name||''}; }
+  return {name:pid, role:'', cls:'', areaId:'', crew:''};
+}
+function attendanceView(){
+  if(!state.online) return shellMsg('cloud_off','Offline','Connect to view foreman sign-in data.');
+  if(!state.att.loaded) return shellMsg('how_to_reg','Loading attendance…','Pulling sign-ins the foremen submitted.');
+  const dateOpts=state.att.dates.map(d=>`<option value="${d}" ${d===state.att.date?'selected':''}>${d}</option>`).join('') || '<option>No data</option>';
+  const recs=Object.entries(state.att.records||{});
+  let totHours=0, injured=0;
+  const rows=recs.map(([pid,r])=>{
+    const p=attPerson(pid); const area=state.att.areas[p.areaId]?.name||'—';
+    totHours+=Number(r.totalHours)||0; if(r.injured) injured++;
+    const sig=r.signatureType==='drawn'&&r.signatureDataUrl ? `<img src="${r.signatureDataUrl}" style="height:26px;max-width:90px;background:#fff;border-radius:3px;padding:1px">` : (r.signatureType==='typed'? `<span class="italic text-white/70">${esc(r.signatureText||'signed')}</span>` : '<span class="text-white/30">—</span>');
+    return `<tr class="border-b border-white/5">
+      <td class="px-2 py-1.5">${esc(p.name)}</td>
+      <td class="px-2 py-1.5"><span class="chip" style="background:${p.role==='Foreman'?'#3FA53522':'#4A8EFF22'};color:${p.role==='Foreman'?'#7ee06f':'#9ec5ff'}">${p.role||'—'}</span> <span class="text-white/45 text-xs">${esc(p.cls)}</span></td>
+      <td class="px-2 py-1.5 text-white/70">${esc(p.crew||'—')}</td>
+      <td class="px-2 py-1.5 text-white/70">${esc(area)}</td>
+      <td class="px-2 py-1.5 mono">${esc(r.timeIn||'—')}</td>
+      <td class="px-2 py-1.5 mono">${esc(r.timeOut||'—')}</td>
+      <td class="px-2 py-1.5 mono text-center">${r.totalHours!=null?r.totalHours:'—'}</td>
+      <td class="px-2 py-1.5 text-center text-xs text-white/50">${[r.lunch30?'L':null, r.break20?'B':null].filter(Boolean).join(' ')||'—'}</td>
+      <td class="px-2 py-1.5 text-center">${r.injured?'<span class="chip" style="background:#E5393522;color:#ff9b97">⚠ Injured</span>':'<span class="text-white/25">ok</span>'}</td>
+      <td class="px-2 py-1.5">${sig}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="10" class="px-3 py-6 text-center text-white/40">No sign-ins recorded for ${esc(state.att.date)}.</td></tr>`;
+  return `<div class="max-w-[1500px] mx-auto px-4 py-4">
+    <div class="flex items-center gap-3 mb-3 flex-wrap">
+      <div class="flex items-center gap-2">
+        <button class="icobtn" onclick="attStep(-1)" title="Previous day"><span class="ms">chevron_left</span></button>
+        <select class="fld" onchange="loadAttDay(this.value)">${dateOpts}</select>
+        <button class="icobtn" onclick="attStep(1)" title="Next day"><span class="ms">chevron_right</span></button>
+      </div>
+      <div class="flex gap-2 ml-auto">
+        ${statCard('Signed in', recs.length, 'how_to_reg')}
+        ${statCard('Total hours', totHours, 'schedule')}
+        ${statCard('Injured', injured, 'health_and_safety', injured?'#E53935':null)}
+      </div>
+    </div>
+    <div class="card overflow-hidden">
+      <div class="scroll" style="max-height:70vh">
+        <table class="w-full text-[13px]" style="border-collapse:collapse">
+          <thead class="text-left text-[11px] uppercase tracking-wide text-white/40" style="position:sticky;top:0;background:#0c1322">
+            <tr><th class="px-2 py-2">Name</th><th class="px-2 py-2">Role</th><th class="px-2 py-2">Foreman</th><th class="px-2 py-2">Area</th><th class="px-2 py-2">In</th><th class="px-2 py-2">Out</th><th class="px-2 py-2 text-center">Hrs</th><th class="px-2 py-2 text-center">L/B</th><th class="px-2 py-2 text-center">Safety</th><th class="px-2 py-2">Signature</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="text-xs text-white/35 mt-2">Live sync from the Foreman Sign-In app · <a class="underline" href="https://dyap123.github.io/foreman-attendance/" target="_blank">open it</a></div>
+  </div>`;
+}
+function attStep(dir){ const i=state.att.dates.indexOf(state.att.date); const j=i-dir; if(j<0||j>=state.att.dates.length) return; loadAttDay(state.att.dates[j]); }
+
+/* ============================================================ TOOLS (reads tool-tracker/) */
+function ensureTools(){
+  if(state.tools.loaded){ render(); return; }
+  if(!db){ render(); return; }
+  db.ref('tool-tracker/assets').on('value', s=>{ state.tools.assets=s.val()||{}; state.tools.loaded=true; if(state.nav==='tools') render(); });
+  db.ref('tool-tracker/config').on('value', s=>{ state.tools.config=s.val()||{}; if(state.nav==='tools') render(); });
+}
+function toolsList(){
+  const q=(state.tools.q||'').toLowerCase(); const sf=state.tools.status;
+  return Object.entries(state.tools.assets||{}).map(([k,a])=>({k,...a}))
+    .filter(a=> sf==='all' || (a.status||'')===sf)
+    .filter(a=> !q || (a.description||'').toLowerCase().includes(q) || (a.item_id||'').toLowerCase().includes(q) || (a.assigned_to||'').toLowerCase().includes(q) || (a.category||'').toLowerCase().includes(q))
+    .sort((a,b)=>(a.description||'').localeCompare(b.description||''));
+}
+function toolsTableHTML(){
+  const list=toolsList();
+  const rows=list.map(a=>{
+    const stColor={'On Site':'#41A447','Transferred':'#FFBF00','Returned':'#9AA3AD','Lost':'#E53935','Damaged':'#E0639B'}[a.status]||'#9AA3AD';
+    const ver=a.verified==='Yes'?'<span class="chip" style="background:#41A44722;color:#86e08f">✓</span>':a.verified==='Missing'?'<span class="chip" style="background:#E5393522;color:#ff9b97">missing</span>':'<span class="text-white/25">—</span>';
+    return `<tr class="border-b border-white/5">
+      <td class="px-2 py-1.5 mono text-white/70">${esc(a.item_id||'')}</td>
+      <td class="px-2 py-1.5">${esc(a.description||'')}</td>
+      <td class="px-2 py-1.5 text-white/60">${esc(a.category||'—')}</td>
+      <td class="px-2 py-1.5 text-center">${a.qty||1}</td>
+      <td class="px-2 py-1.5"><span class="chip" style="background:${stColor}22;color:${stColor}">${esc(a.status||'—')}</span></td>
+      <td class="px-2 py-1.5 text-white/70">${esc(a.assigned_to||'—')}</td>
+      <td class="px-2 py-1.5 text-center">${ver}</td>
+      <td class="px-2 py-1.5 text-right mono text-white/60">${a.unit_cost?'$'+a.unit_cost:''}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="8" class="px-3 py-6 text-center text-white/40">No tools match.</td></tr>`;
+  return `<table class="w-full text-[13px]" style="border-collapse:collapse">
+    <thead class="text-left text-[11px] uppercase tracking-wide text-white/40" style="position:sticky;top:0;background:#0c1322">
+      <tr><th class="px-2 py-2">Item ID</th><th class="px-2 py-2">Description</th><th class="px-2 py-2">Category</th><th class="px-2 py-2 text-center">Qty</th><th class="px-2 py-2">Status</th><th class="px-2 py-2">Assigned To</th><th class="px-2 py-2 text-center">Verified</th><th class="px-2 py-2 text-right">Monthly</th></tr>
+    </thead><tbody>${rows}</tbody></table>
+    <div class="px-2 py-2 text-xs text-white/40">${list.length} shown</div>`;
+}
+function toolsFilter(v){ state.tools.q=v; const el=document.getElementById('toolsList'); if(el) el.innerHTML=toolsTableHTML(); }
+function toolsStatus(v){ state.tools.status=v; const el=document.getElementById('toolsList'); if(el) el.innerHTML=toolsTableHTML(); }
+function toolsView(){
+  if(!state.online) return shellMsg('cloud_off','Offline','Connect to view the tool inventory.');
+  if(!state.tools.loaded) return shellMsg('handyman','Loading tools…','Pulling the live inventory from Tool Tracker.');
+  const all=Object.values(state.tools.assets||{});
+  const onSite=all.filter(a=>a.status==='On Site');
+  const monthly=onSite.reduce((s,a)=>s+(Number(a.unit_cost)||0)*(Number(a.qty)||1),0);
+  const lost=all.filter(a=>a.status==='Lost').length;
+  const imp=state.tools.config?.lastImportFile||'—';
+  const statuses=['all','On Site','Transferred','Returned','Lost','Damaged'];
+  return `<div class="max-w-[1500px] mx-auto px-4 py-4">
+    <div class="flex gap-2 mb-3 flex-wrap">
+      ${statCard('On site', onSite.length, 'inventory_2')}
+      ${statCard('Monthly charge', '$'+monthly.toLocaleString(), 'payments')}
+      ${statCard('Lost', lost, 'report', lost?'#E53935':null)}
+      ${statCard('Total items', all.length, 'category')}
+      <div class="ml-auto self-center text-xs text-white/35">Last import: ${esc(imp)}</div>
+    </div>
+    <div class="flex gap-2 mb-3 flex-wrap items-center">
+      <input class="fld w-64" placeholder="Search description, ID, assignee…" oninput="toolsFilter(this.value)" value="${esc(state.tools.q)}">
+      <select class="fld" onchange="toolsStatus(this.value)">${statuses.map(s=>`<option value="${s}" ${s===state.tools.status?'selected':''}>${s==='all'?'All statuses':s}</option>`).join('')}</select>
+    </div>
+    <div class="card overflow-hidden"><div class="scroll" style="max-height:68vh" id="toolsList">${toolsTableHTML()}</div></div>
+    <div class="text-xs text-white/35 mt-2">Live sync from Tool Tracker · <a class="underline" href="https://dyap123.github.io/tool-tracker/" target="_blank">open it</a></div>
+  </div>`;
+}
+
+/* small shared UI bits */
+function statCard(label, val, icon, accent){
+  return `<div class="card px-3 py-2 flex items-center gap-2">
+    <span class="ms text-[20px]" style="color:${accent||'#3FA535'}">${icon}</span>
+    <div><div class="text-[10px] uppercase tracking-wide text-white/40">${label}</div><div class="display font-bold text-lg" style="color:${accent||'#e8edf6'}">${val}</div></div></div>`;
+}
+function shellMsg(icon,title,sub){ return `<div class="max-w-[1500px] mx-auto px-4 py-16 text-center text-white/50">
+  <span class="ms text-[40px] text-white/30">${icon}</span><div class="display font-semibold text-lg mt-2">${title}</div><div class="text-sm mt-1">${sub}</div></div>`; }
 
 /* ============================================================ BOOT */
 function boot(){

@@ -7,7 +7,7 @@
 <title>SuperYap · Superintendent Suite</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Saira:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
 <link rel="stylesheet" href="assets/tw.css" />
 <!-- Firebase compat -->
@@ -26,11 +26,14 @@
     --primary:#2f80ed; --primary-c:#0053db; --on-primary:#ffffff;
     --blue:#8fc2f2; --blue-c:#0053db; --error:#ffb4ab; --error-c:#93000a;
   }
-  html,body{ background:var(--bg); color:var(--on); font-family:'Inter',system-ui,sans-serif; }
-  body{ margin:0; -webkit-font-smoothing:antialiased; }
-  .display{ font-family:'Space Grotesk',sans-serif; letter-spacing:-0.01em; }
-  .mono{ font-family:'JetBrains Mono',monospace; letter-spacing:-0.01em; }
-  .lcaps{ font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--on-var); }
+  html,body{ background:var(--bg); color:var(--on); font-family:'Inter',system-ui,sans-serif;
+    font-feature-settings:'cv05' 1,'cv11' 1,'ss03' 1,'calt' 1; text-rendering:optimizeLegibility; }
+  body{ margin:0; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; line-height:1.5; letter-spacing:.002em; font-size:14px; }
+  /* Saira = engineered display face for brand, headings, big numbers */
+  .display{ font-family:'Saira','Inter',sans-serif; letter-spacing:-0.005em; }
+  .mono{ font-family:'JetBrains Mono',monospace; letter-spacing:-0.02em; font-feature-settings:'zero' 1; }
+  .lcaps{ font-family:'Saira','Inter',sans-serif; font-size:11px; font-weight:700; letter-spacing:.13em; text-transform:uppercase; color:var(--on-var); }
+  .wordmark{ font-family:'Saira',sans-serif; font-weight:800; letter-spacing:.04em; }
   .ms{ font-family:'Material Symbols Outlined'; font-weight:normal; font-style:normal; line-height:1; -webkit-font-feature-settings:'liga'; font-feature-settings:'liga'; vertical-align:middle; }
   .card{ background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.10); border-radius:8px; }
   .card.glass2{ background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.16); border-radius:12px; box-shadow:0 24px 60px -24px #000; }
@@ -45,13 +48,13 @@
   .icobtn:hover{ background:rgba(255,255,255,.06); color:var(--on); }
   .chip{ display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; }
   .codot{ width:24px; height:24px; min-width:24px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; }
-  .tabbtn{ padding:7px 13px; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer; color:var(--on-var); transition:.12s; }
+  .tabbtn{ font-family:'Saira',sans-serif; padding:7px 14px; border-radius:6px; font-weight:600; font-size:13.5px; letter-spacing:.02em; cursor:pointer; color:var(--on-var); transition:.12s; }
   .tabbtn:hover{ color:var(--on); }
   .tabbtn.on{ background:rgba(47,128,237,.16); color:var(--blue); box-shadow:inset 0 0 0 1px rgba(47,128,237,.4); }
   .seg{ display:inline-flex; background:rgba(0,0,0,.35); border:1px solid var(--outline-v); border-radius:8px; padding:3px; gap:3px; }
   /* data tables */
   .dt{ width:100%; border-collapse:collapse; font-size:13px; }
-  .dt thead th{ position:sticky; top:0; background:#10160e; z-index:2; text-align:left; padding:8px; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--on-var); border-bottom:1px solid var(--outline-v); }
+  .dt thead th{ position:sticky; top:0; background:#0f1722; z-index:2; text-align:left; padding:8px; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--on-var); border-bottom:1px solid var(--outline-v); }
   .dt tbody td{ padding:5px 8px; border-bottom:1px solid rgba(255,255,255,.05); }
   .dt tbody tr:nth-child(even){ background:rgba(255,255,255,.02); }
   .dt tbody tr:hover{ background:rgba(255,255,255,.05); }
@@ -60,9 +63,9 @@
   .gantt th,.gantt td{ border-right:1px solid rgba(255,255,255,.06); border-bottom:1px solid rgba(255,255,255,.06); }
   .gantt .day{ width:24px; min-width:24px; max-width:24px; height:26px; text-align:center; padding:0; font-family:'JetBrains Mono',monospace; font-weight:700; }
   .gantt .lab{ padding:4px 8px; white-space:nowrap; }
-  .gantt .tname{ position:sticky; left:0; z-index:3; background:#10160e; min-width:180px; max-width:240px; overflow:hidden; text-overflow:ellipsis; }
+  .gantt .tname{ position:sticky; left:0; z-index:3; background:#0f1722; min-width:180px; max-width:240px; overflow:hidden; text-overflow:ellipsis; }
   .gantt thead .tname{ z-index:5; }
-  .gantt thead th{ background:#10160e; }
+  .gantt thead th{ background:#0f1722; }
   .gantt .wknd{ background:rgba(137,148,130,.12); }
   .gantt .hol{ background:rgba(255,180,171,.14); }
   .gantt .secband td{ background:rgba(0,83,219,.22); color:#dbe1ff; font-weight:700; padding:5px 10px; position:sticky; left:0; border-left:3px solid var(--blue-c); }
@@ -92,7 +95,7 @@ const NS = 'look-ahead-schedule';
 const state = {
   nav: 'schedule',
   companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
-  resolved: {}, online: false, showPreview: true, seeded: false,
+  resolved: {}, online: false, showPreview: true, seeded: false, collapsed: {},
   tools: { assets:{}, config:{}, loaded:false, q:'', status:'all' },
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
 };
@@ -261,6 +264,7 @@ function loadLocal(){
   if(!Object.keys(state.companies).length) state.companies={...DEFAULT_COMPANIES};
   if(!Object.keys(state.templates).length) state.templates=JSON.parse(JSON.stringify(DEFAULT_TEMPLATES));
   if(!Object.keys(state.holidays).length) state.holidays={...DEFAULT_HOLIDAYS};
+  try{ state.collapsed=JSON.parse(localStorage.getItem('la_collapsed')||'{}'); }catch(e){}
 }
 let saveTimer=null;
 function saveActive(){ saveLocal(); if(!db) return; clearTimeout(saveTimer); saveTimer=setTimeout(()=>{ const pid=activeId(); if(pid&&state.projects[pid]) fb.set('projects/'+pid, state.projects[pid]); fb.set('meta', state.meta); }, 450); }
@@ -340,9 +344,9 @@ function header(){
   return `
   <div class="sticky top-0 z-30" style="background:linear-gradient(180deg,#101a28,#0a1017); border-bottom:1px solid var(--outline-v)">
     <div class="max-w-[1500px] mx-auto px-4 py-2.5 flex items-center gap-3 flex-wrap">
-      <div class="flex items-center gap-2">
-        <div class="display font-bold text-lg tracking-tight text-white">Super<span style="color:#4a9bf0">Yap</span></div>
-        <span class="text-[9px] uppercase tracking-widest text-white/35 hidden md:block leading-3">Superintendent<br>Suite</span>
+      <div class="flex items-center gap-2.5">
+        <div class="wordmark text-xl text-white" style="line-height:1">SUPER<span style="color:#4a9bf0">YAP</span></div>
+        <span class="lcaps text-white/30 hidden md:block" style="font-size:8.5px;line-height:1.15;letter-spacing:.18em">Superintendent<br>Suite</span>
       </div>
       <div class="seg ml-1 flex-wrap">
         ${nav('schedule','Schedule','calendar_month')}
@@ -365,6 +369,7 @@ function builderView(p){
     <div class="flex items-center gap-2 mb-3 flex-wrap">
       <button class="btn btn-ghost" onclick="openInsertCycle()"><span class="ms text-[18px]">library_add</span>Insert Cycle</button>
       <button class="btn btn-ghost" onclick="addSection()"><span class="ms text-[18px]">add</span>Add Section</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleAllCollapse()" title="Collapse or expand all sections"><span class="ms text-[16px]">${allCollapsed()?'unfold_more':'unfold_less'}</span>${allCollapsed()?'Expand all':'Collapse all'}</button>
       <div class="ml-auto flex items-center gap-2 text-xs text-white/50">
         <span class="ms text-[16px]">event</span> Anchor ${esc(p.startDate)}
         <button class="btn btn-ghost btn-sm" onclick="state.showPreview=!state.showPreview; render()">${state.showPreview?'Hide':'Show'} preview</button>
@@ -379,23 +384,30 @@ function editorPanel(p){
   const secs=sectionList(p);
   if(!secs.length) return `<div class="card p-8 text-center text-white/50">No sections yet. Click <b>Insert Cycle</b> to drop in a full foundation sequence, or <b>Add Section</b>.</div>`;
   return secs.map(s=>{
-    const rows=tasksOf(p,s.id).map(t=>taskRow(p,t)).join('');
+    const tasks=tasksOf(p,s.id);
+    const collapsed=!!state.collapsed[s.id];
+    const rows=tasks.map(t=>taskRow(p,t)).join('');
     return `<div class="card mb-4 overflow-hidden">
       <div class="secband-edit">
-        <span class="ms" style="color:var(--blue);font-size:18px">view_week</span>
-        <input class="fld display font-semibold flex-1" style="background:transparent;border-color:transparent;color:var(--on);font-size:15px" value="${esc(s.name)}" onchange="renameSection('${s.id}', this.value)">
+        <button class="icobtn" title="${collapsed?'Expand':'Collapse'} section" onclick="toggleCollapse('${s.id}')" style="color:var(--blue)"><span class="ms text-[20px]">${collapsed?'chevron_right':'expand_more'}</span></button>
+        <input class="display font-semibold flex-1" style="background:transparent;border:1px solid transparent;color:var(--on);font-size:15px;padding:4px 6px;border-radius:4px" value="${esc(s.name)}" onchange="renameSection('${s.id}', this.value)">
+        <span class="lcaps" style="font-size:10px;letter-spacing:.1em">${tasks.length} task${tasks.length===1?'':'s'}</span>
         <button class="icobtn" title="Move up" onclick="moveSection('${s.id}',-1)"><span class="ms text-[18px]">arrow_upward</span></button>
         <button class="icobtn" title="Move down" onclick="moveSection('${s.id}',1)"><span class="ms text-[18px]">arrow_downward</span></button>
         <button class="btn btn-ghost btn-sm" onclick="addTask('${s.id}')"><span class="ms text-[16px]">add</span>Task</button>
         <button class="icobtn" title="Delete section" onclick="delSection('${s.id}')"><span class="ms text-[18px]">delete</span></button>
       </div>
-      <div class="trow lcaps">
+      ${collapsed ? '' : `<div class="trow lcaps">
         <div></div><div>Name</div><div class="text-center">Days</div><div>Start</div><div class="col-finish">Finish</div><div class="text-center">Link</div><div>Company</div><div></div>
       </div>
-      ${rows}
+      ${rows}`}
     </div>`;
   }).join('');
 }
+function toggleCollapse(sid){ state.collapsed[sid]=!state.collapsed[sid]; saveCollapsed(); render(); }
+function allCollapsed(){ const secs=sectionList(activeProject()); return secs.length>0 && secs.every(s=>state.collapsed[s.id]); }
+function toggleAllCollapse(){ const p=activeProject(); if(allCollapsed()){ state.collapsed={}; } else { sectionList(p).forEach(s=>state.collapsed[s.id]=true); } saveCollapsed(); render(); }
+function saveCollapsed(){ try{ localStorage.setItem('la_collapsed', JSON.stringify(state.collapsed)); }catch(e){} }
 
 function taskRow(p,t){
   const r=state.resolved[t.id]||{}; const chained=t.depMode==='afterPrev';
@@ -443,7 +455,7 @@ function ganttPanel(p){
   const DW=['S','M','T','W','T','F','S'];
   // month spans
   let monthRow=''; let i=0;
-  while(i<days.length){ const m=days[i].slice(0,7); let span=0; while(i+span<days.length && days[i+span].slice(0,7)===m) span++; const d=parseYMD(days[i]); monthRow+=`<th class="lab text-left" colspan="${span}" style="background:#10160e">${MON[d.getMonth()]} ${d.getFullYear()}</th>`; i+=span; }
+  while(i<days.length){ const m=days[i].slice(0,7); let span=0; while(i+span<days.length && days[i+span].slice(0,7)===m) span++; const d=parseYMD(days[i]); monthRow+=`<th class="lab text-left" colspan="${span}" style="background:#0f1722">${MON[d.getMonth()]} ${d.getFullYear()}</th>`; i+=span; }
   const dayHead=days.map(d=>{ const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':''; return `<th class="day ${cl}"><div class="text-white/40 text-[9px]">${DW[dow(d)]}</div>${Number(d.slice(8))}</th>`; }).join('');
   const legend=companyList().map(c=>`<span class="chip" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span><span class="text-xs text-white/60 mr-3">${esc(c.name)}</span>`).join('');
 
@@ -471,7 +483,7 @@ function ganttPanel(p){
     <div class="scroll" style="max-height:62vh">
       <table class="gantt">
         <thead>
-          <tr><th class="lab tname" style="background:#10160e" rowspan="2">Task</th><th class="lab" style="background:#10160e" rowspan="2">Start</th><th class="lab" style="background:#10160e" rowspan="2">Finish</th><th class="lab" style="background:#10160e" rowspan="2">Days</th><th class="lab" style="background:#10160e" rowspan="2">Co.</th>${monthRow}</tr>
+          <tr><th class="lab tname" style="background:#0f1722" rowspan="2">Task</th><th class="lab" style="background:#0f1722" rowspan="2">Start</th><th class="lab" style="background:#0f1722" rowspan="2">Finish</th><th class="lab" style="background:#0f1722" rowspan="2">Days</th><th class="lab" style="background:#0f1722" rowspan="2">Co.</th>${monthRow}</tr>
           <tr>${dayHead}</tr>
         </thead>
         <tbody>${body}</tbody>
@@ -546,7 +558,7 @@ function updHoliday(d,v){ state.holidays[d]=v; saveHolidays(); }
 function delHoliday(d){ delete state.holidays[d]; saveHolidays(); recomputeActive(); render(); }
 function addHoliday(){ const d=$('#newHolDate').value; const l=$('#newHolLabel').value||'Holiday'; if(!d) return toast('Pick a date','warn'); state.holidays[d]=l; saveHolidays(); recomputeActive(); render(); }
 function updTpl(i,f,v){ if(f==='days') v=Math.max(1,parseInt(v)||1); state.templates.pileCapCycle.tasks[i][f]=v; saveTemplates(); render(); }
-function newProject(){ const name=prompt('Project name:','New Project'); if(!name) return; const pid=uid('p_'); let s=fmtYMD(new Date()); while(dow(s)!==1) s=addDays(s,1); state.projects[pid]={id:pid,name,subtitle:'Look Ahead Schedule',startDate:s,sections:{},tasks:{}}; state.meta.activeProjectId=pid; state.tab='builder'; recomputeActive(); render(); saveActive(); }
+function newProject(){ const name=prompt('Project name:','New Project'); if(!name) return; const pid=uid('p_'); let s=fmtYMD(new Date()); while(dow(s)!==1) s=addDays(s,1); state.projects[pid]={id:pid,name,subtitle:'Look Ahead Schedule',startDate:s,sections:{},tasks:{}}; state.meta.activeProjectId=pid; state.nav='schedule'; recomputeActive(); render(); saveActive(); }
 function syncPours(){
   const p=activeProject(); const yr=Number(p.startDate.slice(0,4)); let n=0;
   Object.values(p.tasks).forEach(t=>{ if(t.linkedPourId && state.pours[t.linkedPourId]){ const pr=state.pours[t.linkedPourId]; if(pr.date){ const [m,d]=pr.date.split('/').map(Number); t.depMode='manual'; t.start=`${yr}-${pad(m)}-${pad(d)}`; n++; } } });

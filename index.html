@@ -267,7 +267,31 @@ function loadLocal(){
   try{ state.collapsed=JSON.parse(localStorage.getItem('la_collapsed')||'{}'); }catch(e){}
 }
 let saveTimer=null;
-function saveActive(){ saveLocal(); if(!db) return; clearTimeout(saveTimer); saveTimer=setTimeout(()=>{ const pid=activeId(); if(pid&&state.projects[pid]) fb.set('projects/'+pid, state.projects[pid]); fb.set('meta', state.meta); }, 450); }
+function saveActive(){
+  saveLocal(); setSaveStatus('saving');
+  if(!db){ setSaveStatus('saved'); return; }
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(()=>{
+    const pid=activeId(); const w=(pid&&state.projects[pid])? fb.set('projects/'+pid, state.projects[pid]) : Promise.resolve();
+    Promise.resolve(w).then(()=>fb.set('meta', state.meta)).then(()=>setSaveStatus('saved')).catch(()=>setSaveStatus('saved'));
+  }, 450);
+}
+/* ----- save status indicator ----- */
+function setSaveStatus(s){ state.saveState={ status:s, at: s==='saved'?Date.now():(state.saveState&&state.saveState.at||0) }; const el=document.getElementById('saveStatus'); if(el) el.outerHTML=saveStatusEl(); }
+function saveStatusEl(){
+  const s=state.saveState||{status:'saved',at:0}; let icon,txt,cls;
+  if(!state.online){ icon='cloud_off'; txt='Saved on device'; cls='text-amber-300'; }
+  else if(s.status==='saving'){ icon='sync'; txt='Saving…'; cls='text-amber-300'; }
+  else { const t=s.at? new Date(s.at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):''; icon='cloud_done'; txt='Saved'+(t?' '+t:''); cls='text-sky-300'; }
+  return `<span id="saveStatus" class="text-xs px-2 py-1 rounded-full ${cls} whitespace-nowrap" style="background:rgba(150,170,205,.1)"><span class="ms text-[14px]">${icon}</span> ${txt}</span>`;
+}
+/* ----- undo / redo (per-schedule snapshot stack) ----- */
+let undoStack=[], redoStack=[];
+function snapProject(){ const pid=activeId(); return { pid, data: JSON.stringify(state.projects[pid]||{}) }; }
+function pushUndo(){ if(!activeId()) return; undoStack.push(snapProject()); if(undoStack.length>60) undoStack.shift(); redoStack=[]; }
+function applySnap(s){ state.projects[s.pid]=JSON.parse(s.data); state.meta.activeProjectId=s.pid; recomputeActive(); render(); saveActive(); }
+function undo(){ if(!undoStack.length) return toast('Nothing to undo','warn'); redoStack.push(snapProject()); applySnap(undoStack.pop()); toast('Undone'); }
+function redo(){ if(!redoStack.length) return toast('Nothing to redo','warn'); undoStack.push(snapProject()); applySnap(redoStack.pop()); toast('Redone'); }
 function saveCompanies(){ saveLocal(); fb.set('companies', state.companies); }
 function saveHolidays(){ saveLocal(); fb.set('holidays', state.holidays); }
 function saveTemplates(){ saveLocal(); fb.set('templates', state.templates); }
@@ -291,6 +315,7 @@ function attachListeners(){
 /* ============================================================ MUTATIONS */
 function changeTaskField(tid, field, value){
   const p=activeProject(); const t=p.tasks[tid]; if(!t) return;
+  pushUndo();
   if(field==='days') value=Math.max(1, parseInt(value)||1);
   if(field==='lag') value=parseInt(value)||0;
   t[field]=value;
@@ -298,32 +323,45 @@ function changeTaskField(tid, field, value){
 }
 function toggleDep(tid){
   const p=activeProject(); const t=p.tasks[tid]; if(!t) return;
+  pushUndo();
   if(t.depMode==='afterPrev'){ t.depMode='manual'; t.start = state.resolved[tid]?.start || p.startDate; }
   else { t.depMode='afterPrev'; }
   recomputeActive(); render(); saveActive();
 }
 function addTask(sid){
+  pushUndo();
   const p=activeProject(); const n=tasksOf(p,sid).length;
   const tid=uid('t_'); p.tasks[tid]={ sectionId:sid, order:n, name:'New task', companyId:companyList()[0]?.id||'webcor', days:1, depMode: n? 'afterPrev':'manual', depId:null, lag:0, linkedPourId:null, start:p.startDate };
   recomputeActive(); render(); saveActive();
 }
 function dupTask(tid){
   const p=activeProject(); const t=p.tasks[tid]; if(!t) return;
+  pushUndo();
   const copy=JSON.parse(JSON.stringify(t)); copy.order=(t.order||0)+0.5; const nid=uid('t_'); p.tasks[nid]=copy;
   renumber(p,t.sectionId); recomputeActive(); render(); saveActive();
 }
-function delTask(tid){ const p=activeProject(); const sid=p.tasks[tid]?.sectionId; delete p.tasks[tid]; if(sid) renumber(p,sid); recomputeActive(); render(); saveActive(); }
+function delTask(tid){ const p=activeProject(); if(!p.tasks[tid]) return; pushUndo(); const sid=p.tasks[tid].sectionId; delete p.tasks[tid]; if(sid) renumber(p,sid); recomputeActive(); render(); saveActive(); }
 function moveTask(tid, dir){
   const p=activeProject(); const t=p.tasks[tid]; const arr=tasksOf(p,t.sectionId);
   const i=arr.findIndex(x=>x.id===tid); const j=i+dir; if(j<0||j>=arr.length) return;
+  pushUndo();
   const a=arr[i], b=arr[j]; const ao=p.tasks[a.id].order; p.tasks[a.id].order=p.tasks[b.id].order; p.tasks[b.id].order=ao;
   recomputeActive(); render(); saveActive();
 }
 function renumber(p, sid){ tasksOf(p,sid).forEach((t,i)=>{ p.tasks[t.id].order=i; }); }
-function addSection(){ const p=activeProject(); const sid=uid('s_'); p.sections[sid]={name:'New Section', order:sectionList(p).length}; render(); saveActive(); }
-function renameSection(sid,name){ activeProject().sections[sid].name=name; saveActive(); }
-function delSection(sid){ const p=activeProject(); if(!confirm('Delete this section and its tasks?')) return; Object.keys(p.tasks).forEach(tid=>{ if(p.tasks[tid].sectionId===sid) delete p.tasks[tid]; }); delete p.sections[sid]; recomputeActive(); render(); saveActive(); }
-function moveSection(sid,dir){ const p=activeProject(); const arr=sectionList(p); const i=arr.findIndex(x=>x.id===sid); const j=i+dir; if(j<0||j>=arr.length) return; const a=arr[i],b=arr[j]; const ao=p.sections[a.id].order; p.sections[a.id].order=p.sections[b.id].order; p.sections[b.id].order=ao; render(); saveActive(); }
+function addSection(){ pushUndo(); const p=activeProject(); const sid=uid('s_'); p.sections[sid]={name:'New Section', order:sectionList(p).length}; render(); saveActive(); }
+function renameSection(sid,name){ pushUndo(); activeProject().sections[sid].name=name; saveActive(); }
+function delSection(sid){ const p=activeProject(); if(!confirm('Delete this section and its tasks?')) return; pushUndo(); Object.keys(p.tasks).forEach(tid=>{ if(p.tasks[tid].sectionId===sid) delete p.tasks[tid]; }); delete p.sections[sid]; recomputeActive(); render(); saveActive(); }
+function moveSection(sid,dir){ const p=activeProject(); const arr=sectionList(p); const i=arr.findIndex(x=>x.id===sid); const j=i+dir; if(j<0||j>=arr.length) return; pushUndo(); const a=arr[i],b=arr[j]; const ao=p.sections[a.id].order; p.sections[a.id].order=p.sections[b.id].order; p.sections[b.id].order=ao; render(); saveActive(); }
+function duplicateSection(sid){
+  const p=activeProject(); const src=p.sections[sid]; if(!src) return;
+  pushUndo();
+  const nsid=uid('s_'); p.sections[nsid]={ name: src.name+' (copy)', order: sectionList(p).length };
+  const idmap={};
+  tasksOf(p,sid).forEach(t=>{ const nid=uid('t_'); idmap[t.id]=nid; const c=JSON.parse(JSON.stringify(t)); c.sectionId=nsid; delete c.id; p.tasks[nid]=c; });
+  Object.values(idmap).forEach(nid=>{ const t=p.tasks[nid]; if(t.depId && idmap[t.depId]) t.depId=idmap[t.depId]; });
+  recomputeActive(); render(); saveActive(); toast('Section duplicated');
+}
 
 /* ============================================================ RENDER */
 function render(){
@@ -355,10 +393,10 @@ function header(){
         ${nav('settings','Settings','settings')}
       </div>
       <div class="ml-auto flex items-center gap-2 flex-wrap">
-        ${state.nav==='schedule' ? `<select class="fld" onchange="state.meta.activeProjectId=this.value; recomputeActive(); render(); saveActive()">${projOpts}</select>
+        ${state.nav==='schedule' ? `<select class="fld" title="Load a schedule" onchange="state.meta.activeProjectId=this.value; recomputeActive(); render(); saveActive()">${projOpts}</select>
+        <button class="btn btn-ghost" title="New schedule" onclick="newProject()"><span class="ms text-[18px]">add</span><span class="hidden lg:inline">New</span></button>
         <button class="btn btn-green" onclick="openExport()"><span class="ms">ios_share</span>Export</button>` : ''}
-        <span class="text-xs px-2 py-1 rounded-full ${state.online?'text-sky-300':'text-amber-300'}" style="background:rgba(150,170,205,.1)">
-          <span class="ms text-[14px]">${state.online?'cloud_done':'cloud_off'}</span> ${state.online?'Synced':'Offline'}</span>
+        ${saveStatusEl()}
       </div>
     </div>
   </div>`;
@@ -370,6 +408,10 @@ function builderView(p){
       <button class="btn btn-ghost" onclick="openInsertCycle()"><span class="ms text-[18px]">library_add</span>Insert Cycle</button>
       <button class="btn btn-ghost" onclick="addSection()"><span class="ms text-[18px]">add</span>Add Section</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleAllCollapse()" title="Collapse or expand all sections"><span class="ms text-[16px]">${allCollapsed()?'unfold_more':'unfold_less'}</span>${allCollapsed()?'Expand all':'Collapse all'}</button>
+      <div class="flex items-center gap-1 ml-1">
+        <button class="icobtn ${undoStack.length?'':'opacity-30'}" title="Undo (⌘Z)" onclick="undo()"><span class="ms text-[18px]">undo</span></button>
+        <button class="icobtn ${redoStack.length?'':'opacity-30'}" title="Redo (⌘⇧Z)" onclick="redo()"><span class="ms text-[18px]">redo</span></button>
+      </div>
       <div class="ml-auto flex items-center gap-2 text-xs text-white/50">
         <span class="ms text-[16px]">event</span> Anchor ${esc(p.startDate)}
         <button class="btn btn-ghost btn-sm" onclick="state.showPreview=!state.showPreview; render()">${state.showPreview?'Hide':'Show'} preview</button>
@@ -395,6 +437,7 @@ function editorPanel(p){
         <button class="icobtn" title="Move up" onclick="moveSection('${s.id}',-1)"><span class="ms text-[18px]">arrow_upward</span></button>
         <button class="icobtn" title="Move down" onclick="moveSection('${s.id}',1)"><span class="ms text-[18px]">arrow_downward</span></button>
         <button class="btn btn-ghost btn-sm" onclick="addTask('${s.id}')"><span class="ms text-[16px]">add</span>Task</button>
+        <button class="icobtn" title="Duplicate section" onclick="duplicateSection('${s.id}')"><span class="ms text-[18px]">content_copy</span></button>
         <button class="icobtn" title="Delete section" onclick="delSection('${s.id}')"><span class="ms text-[18px]">delete</span></button>
       </div>
       ${collapsed ? '' : `<div class="trow lcaps">
@@ -558,7 +601,7 @@ function updHoliday(d,v){ state.holidays[d]=v; saveHolidays(); }
 function delHoliday(d){ delete state.holidays[d]; saveHolidays(); recomputeActive(); render(); }
 function addHoliday(){ const d=$('#newHolDate').value; const l=$('#newHolLabel').value||'Holiday'; if(!d) return toast('Pick a date','warn'); state.holidays[d]=l; saveHolidays(); recomputeActive(); render(); }
 function updTpl(i,f,v){ if(f==='days') v=Math.max(1,parseInt(v)||1); state.templates.pileCapCycle.tasks[i][f]=v; saveTemplates(); render(); }
-function newProject(){ const name=prompt('Project name:','New Project'); if(!name) return; const pid=uid('p_'); let s=fmtYMD(new Date()); while(dow(s)!==1) s=addDays(s,1); state.projects[pid]={id:pid,name,subtitle:'Look Ahead Schedule',startDate:s,sections:{},tasks:{}}; state.meta.activeProjectId=pid; state.nav='schedule'; recomputeActive(); render(); saveActive(); }
+function newProject(){ const name=prompt('Name this schedule:','New Schedule'); if(!name) return; pushUndo(); const pid=uid('p_'); let s=fmtYMD(new Date()); while(dow(s)!==1) s=addDays(s,1); state.projects[pid]={id:pid,name,subtitle:'Look Ahead Schedule',startDate:s,sections:{},tasks:{}}; state.meta.activeProjectId=pid; state.nav='schedule'; recomputeActive(); render(); saveActive(); toast('New schedule created'); }
 function syncPours(){
   const p=activeProject(); const yr=Number(p.startDate.slice(0,4)); let n=0;
   Object.values(p.tasks).forEach(t=>{ if(t.linkedPourId && state.pours[t.linkedPourId]){ const pr=state.pours[t.linkedPourId]; if(pr.date){ const [m,d]=pr.date.split('/').map(Number); t.depMode='manual'; t.start=`${yr}-${pad(m)}-${pad(d)}`; n++; } } });
@@ -906,6 +949,12 @@ function boot(){
   if(initFirebase()){ state.online=true; attachListeners(); seedIfNeeded().catch(e=>console.warn(e)); }
   else { state.online=false; }
   render();
+  document.addEventListener('keydown', e=>{
+    const mod=e.metaKey||e.ctrlKey; if(!mod) return;
+    const k=e.key.toLowerCase();
+    if(k==='z' && state.nav==='schedule'){ e.preventDefault(); e.shiftKey?redo():undo(); }
+    else if(k==='y' && state.nav==='schedule'){ e.preventDefault(); redo(); }
+  });
 }
 document.addEventListener('DOMContentLoaded', boot);
 </script>

@@ -1159,7 +1159,7 @@ function shellMsg(icon,title,sub){ return `<div class="max-w-[1500px] mx-auto px
 /* ============================================================ BOOT */
 function boot(){
   loadLocal(); ensureActive(); recomputeActive(); render();
-  if(initFirebase()){ state.online=true; attachListeners(); seedIfNeeded().catch(e=>console.warn(e)); }
+  if(false){ state.online=true; attachListeners(); seedIfNeeded().catch(e=>console.warn(e)); }
   else { state.online=false; }
   render();
   document.addEventListener('keydown', e=>{

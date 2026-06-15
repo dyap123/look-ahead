@@ -38,7 +38,10 @@
   .card{ background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.10); border-radius:8px; }
   .card.glass2{ background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.16); border-radius:12px; box-shadow:0 24px 60px -24px #000; }
   input,select,textarea{ color-scheme:dark; }
-  .fld{ background:rgba(255,255,255,.04); border:1px solid var(--outline-v); border-radius:4px; color:var(--on); padding:6px 9px; font-size:13px; }
+  /* dark-theme select contrast: force readable closed value + option popup */
+  select.fld{ color:var(--on); font-weight:500; }
+  option, select option, optgroup{ background:#0f1722 !important; color:#eef3f9 !important; }
+  .fld{ background:rgba(255,255,255,.06); border:1px solid var(--outline); border-radius:4px; color:var(--on); padding:6px 9px; font-size:13px; }
   .fld:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 2px rgba(47,128,237,.25); }
   .btn{ display:inline-flex; align-items:center; gap:6px; border-radius:8px; padding:7px 13px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:.12s; user-select:none; }
   .btn-green{ background:var(--primary); color:var(--on-primary); font-weight:700; } .btn-green:hover{ background:#4a9bf0; }
@@ -72,10 +75,15 @@
   .gantt .hol{ background:rgba(255,180,171,.14); }
   .gantt .secband td{ background:rgba(0,83,219,.22); color:#dbe1ff; font-weight:700; padding:5px 10px; position:sticky; left:0; border-left:3px solid var(--blue-c); }
   .gantt .today{ box-shadow:inset 2px 0 0 var(--blue); }
+  .gantt td.gcell{ cursor:pointer; }
+  .gantt td.gcell:hover{ outline:2px solid var(--blue); outline-offset:-2px; }
   .scroll{ overflow:auto; }
   .scroll::-webkit-scrollbar{ height:10px; width:10px; } .scroll::-webkit-scrollbar-thumb{ background:rgba(137,148,130,.35); border-radius:6px; }
   /* editor rows */
   .secband-edit{ display:flex; align-items:center; gap:8px; padding:8px 12px; background:rgba(180,197,255,.06); border-left:3px solid var(--blue-c); }
+  .secname{ background:transparent; border:1px solid transparent; color:var(--on); font-size:15px; padding:4px 7px; border-radius:4px; }
+  .secname:hover{ border-color:var(--outline-v); background:rgba(255,255,255,.03); }
+  .secname:focus{ outline:none; border-color:var(--primary); background:rgba(255,255,255,.05); }
   .trow{ display:grid; grid-template-columns: 18px 1fr 44px 104px 104px 40px 156px auto; gap:8px; align-items:center; padding:5px 10px; border-bottom:1px solid rgba(255,255,255,.05); }
   .trow:nth-child(even){ background:rgba(255,255,255,.015); }
   .trow:hover{ background:rgba(255,255,255,.04); }
@@ -110,7 +118,7 @@ const state = {
   companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
   resolved: {}, online: false, showPreview: true, seeded: false, collapsed: {},
   view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company',
-  tools: { assets:{}, config:{}, loaded:false, q:'', status:'all' },
+  tools: { assets:{}, config:{}, loaded:false, q:'', status:'all', tab:'dash' },
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
 };
 
@@ -384,7 +392,6 @@ function render(){
   let view;
   if(state.nav==='attendance') view=attendanceView();
   else if(state.nav==='tools') view=toolsView();
-  else if(state.nav==='settings') view=settingsView(p);
   else view=builderView(p);
   $('#app').innerHTML = header() + view;
   if(typeof afterRender==='function') afterRender();
@@ -405,7 +412,6 @@ function header(){
         ${nav('schedule','Schedule','calendar_month')}
         ${nav('attendance','Attendance','how_to_reg')}
         ${nav('tools','Tools','handyman')}
-        ${nav('settings','Settings','settings')}
       </div>
       <div class="ml-auto flex items-center gap-2 flex-wrap">
         ${state.nav==='schedule' ? `<select class="fld" title="Load a schedule" onchange="state.meta.activeProjectId=this.value; recomputeActive(); render(); saveActive()">${projOpts}</select>
@@ -460,7 +466,8 @@ function editorPanel(p){
     return `<div class="card mb-4 overflow-hidden">
       <div class="secband-edit">
         <button class="icobtn" title="${collapsed?'Expand':'Collapse'} section" onclick="toggleCollapse('${s.id}')" style="color:var(--blue)"><span class="ms text-[20px]">${collapsed?'chevron_right':'expand_more'}</span></button>
-        <input class="display font-semibold flex-1" style="background:transparent;border:1px solid transparent;color:var(--on);font-size:15px;padding:4px 6px;border-radius:4px" value="${esc(s.name)}" onchange="renameSection('${s.id}', this.value)">
+        <input id="secname-${s.id}" class="secname display font-semibold flex-1" value="${esc(s.name)}" onchange="renameSection('${s.id}', this.value)">
+        <button class="icobtn" title="Rename section" onclick="document.getElementById('secname-${s.id}').focus()"><span class="ms text-[16px]">edit</span></button>
         <span class="lcaps" style="font-size:10px;letter-spacing:.1em">${tasks.length} task${tasks.length===1?'':'s'}</span>
         <button class="icobtn" title="Move up" onclick="moveSection('${s.id}',-1)"><span class="ms text-[18px]">arrow_upward</span></button>
         <button class="icobtn" title="Move down" onclick="moveSection('${s.id}',1)"><span class="ms text-[18px]">arrow_downward</span></button>
@@ -543,8 +550,13 @@ function ganttPanel(p){
       const fill = byStatus ? statusMeta(taskStatus(t)).color : c.color;
       const cells=days.map(d=>{
         const within = r.start && d>=r.start && d<=r.finish;
-        if(within && isWorkday(d,state.holidays)){ const td=d===today?'today':''; return `<td class="day ${td}" style="background:${fill};color:${textOn(fill)}">${esc(c.letter)}</td>`; }
-        const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':''; const td=d===today?'today':''; return `<td class="day ${cl} ${td}"></td>`;
+        const canClick = r.start && d>=r.start;
+        const oc = canClick ? `onclick="ganttSetDay('${t.id}','${d}')"` : '';
+        const gc = canClick ? 'gcell' : '';
+        const tdc = d===today?'today':'';
+        if(within && isWorkday(d,state.holidays)) return `<td class="day ${tdc} ${gc}" ${oc} style="background:${fill};color:${textOn(fill)}">${esc(c.letter)}</td>`;
+        const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':'';
+        return `<td class="day ${cl} ${tdc} ${gc}" ${oc}></td>`;
       }).join('');
       body+=`<tr>
         <td class="lab tname">${esc(t.name)}</td>
@@ -570,7 +582,8 @@ function ganttPanel(p){
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('todayCol')?.scrollIntoView({inline:'center',block:'nearest'})"><span class="ms text-[16px]">today</span>Today</button>
       <button class="icobtn ml-auto" title="Fullscreen" onclick="toggleGanttFull()"><span class="ms text-[18px]">fullscreen</span></button>
     </div>
-    <div class="flex items-center flex-wrap gap-y-1 mb-2">${legend}</div>
+    <div class="flex items-center flex-wrap gap-y-1 mb-1">${legend}</div>
+    <div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">touch_app</span> Click a day cell to add or remove days for that task.</div>
     <div class="scroll" style="max-height:62vh">
       <table class="gantt" style="--dayw:${cellW}px">
         <thead>
@@ -583,6 +596,15 @@ function ganttPanel(p){
   </div>`;
 }
 function toggleGanttFull(){ const el=document.getElementById('ganttCard'); if(!el) return; if(document.fullscreenElement) document.exitFullscreen(); else el.requestFullscreen&&el.requestFullscreen(); }
+function ganttSetDay(tid, day){
+  const p=activeProject(); const t=p.tasks[tid]; const r=state.resolved[tid]; if(!t||!r) return;
+  if(day < r.start) return; // can't end before it starts
+  pushUndo();
+  let nd;
+  if(day===r.finish) nd=Math.max(1, workingDaysBetween(r.start, r.finish, state.holidays).length - 1); // click last day → remove it
+  else nd=Math.max(1, workingDaysBetween(r.start, day, state.holidays).length);             // click elsewhere → end there
+  t.days=nd; recomputeActive(); render(); saveActive();
+}
 
 /* ============================================================ STATUS */
 const STATUS=[
@@ -594,6 +616,29 @@ function taskStatus(t){ return t.status||'todo'; }
 function statusMeta(id){ return STATUS.find(s=>s.id===id)||STATUS[0]; }
 function setTaskStatus(tid,st){ const p=activeProject(); const t=p.tasks[tid]; if(!t)return; pushUndo(); t.status=st; render(); afterRender(); saveActive(); }
 function cycleStatus(tid){ const order=['todo','doing','done']; const cur=taskStatus(activeProject().tasks[tid]); setTaskStatus(tid, order[(order.indexOf(cur)+1)%3]); }
+function openTaskQuick(tid){
+  const p=activeProject(); const t=p.tasks[tid]; if(!t) return; const r=state.resolved[tid]||{};
+  const opts=companyList().map(cc=>`<option value="${cc.id}" ${cc.id===t.companyId?'selected':''}>${esc(cc.name)}</option>`).join('');
+  const stBtns=STATUS.map(s=>`<button class="btn ${taskStatus(t)===s.id?'btn-green':'btn-ghost'} btn-sm flex-1 justify-center" onclick="setTaskStatus('${tid}','${s.id}'); openTaskQuick('${tid}')"><span class="ms text-[16px]">${s.icon}</span>${s.label}</button>`).join('');
+  const chained=t.depMode==='afterPrev';
+  $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-4 w-full max-w-sm">
+    <div class="lcaps mb-1">Edit task</div>
+    <input class="fld w-full display font-semibold mb-3" value="${esc(t.name)}" onchange="changeTaskField('${tid}','name',this.value); openTaskQuick('${tid}')">
+    <div class="flex items-center gap-2 mb-3">
+      <span class="text-xs text-white/50">Days</span>
+      <button class="icobtn" onclick="changeTaskField('${tid}','days',${Math.max(1,(t.days||1)-1)}); openTaskQuick('${tid}')"><span class="ms">remove</span></button>
+      <span class="mono w-7 text-center">${t.days}</span>
+      <button class="icobtn" onclick="changeTaskField('${tid}','days',${(t.days||1)+1}); openTaskQuick('${tid}')"><span class="ms">add</span></button>
+      <select class="fld flex-1" onchange="changeTaskField('${tid}','companyId',this.value); openTaskQuick('${tid}')">${opts}</select>
+    </div>
+    <div class="flex items-center gap-2 mb-3 text-xs text-white/50">
+      <button class="btn btn-ghost btn-sm" onclick="toggleDep('${tid}'); openTaskQuick('${tid}')"><span class="ms text-[15px]">${chained?'link':'push_pin'}</span>${chained?'Chained':'Fixed date'}</button>
+      <span class="mono">${esc(fmtMD(r.start))}–${esc(fmtMD(r.finish))}</span>
+    </div>
+    <div class="flex gap-1 mb-3">${stBtns}</div>
+    <div class="flex justify-between"><button class="btn btn-ghost btn-sm" onclick="delTask('${tid}'); closeModal()"><span class="ms text-[16px]">delete</span>Delete</button><button class="btn btn-green" onclick="closeModal()">Done</button></div>
+  </div></div>`;
+}
 
 /* ============================================================ LOOK-AHEAD (3-week) */
 function weekMonday(ymd){ let s=ymd; while(dow(s)!==1) s=addDays(s,-1); return s; }
@@ -614,7 +659,7 @@ function lookAheadView(p){
       const hol=isHoliday(d,state.holidays);
       const chips=tasksOnDay(p,d).map(t=>{
         const c=state.companies[t.companyId]||{color:'#888',letter:'?'}; const done=taskStatus(t)==='done'; const st=statusMeta(taskStatus(t));
-        return `<div class="la-chip" style="border-left:3px solid ${c.color};${done?'opacity:.55':''}" onclick="cycleStatus('${t.tid}')" title="${esc(t.name)} · ${esc(c.name)} · ${st.label} (click to advance)">
+        return `<div class="la-chip" style="border-left:3px solid ${c.color};${done?'opacity:.55':''}" onclick="openTaskQuick('${t.tid}')" title="${esc(t.name)} · ${esc(c.name)} · ${st.label} (click to edit)">
           <span class="codot" style="width:15px;height:15px;font-size:8px;background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span>
           <span class="truncate ${done?'line-through':''}">${esc(t.name)}</span></div>`;
       }).join('') || '<div class="text-white/20 text-xs px-1.5 py-1">—</div>';
@@ -633,7 +678,7 @@ function lookAheadView(p){
       <button class="icobtn" title="Later" onclick="state.laOffset++; render()"><span class="ms">chevron_right</span></button>
       <span class="text-xs text-white/45 ml-2">Showing</span>
       <select class="fld" onchange="state.laWeeks=+this.value; render()">${[2,3,4,6].map(n=>`<option value="${n}" ${n===state.laWeeks?'selected':''}>${n} weeks</option>`).join('')}</select>
-      <span class="text-xs text-white/35 ml-auto">Tap a task to mark Not started → In progress → Done</span>
+      <span class="text-xs text-white/35 ml-auto">Tap a task to edit days, crew, or status</span>
     </div>
     ${weeks}`;
 }
@@ -681,7 +726,9 @@ function crewView(p){
   return `
     <div class="card p-3 mb-3"><div class="lcaps mb-2">Workload — working days per crew</div><div style="height:230px"><canvas id="crewChart"></canvas></div></div>
     <div class="card p-3 mb-3"><div class="lcaps mb-2">Crew conflicts</div><div class="space-y-1.5">${confCards}</div></div>
-    <div class="grid md:grid-cols-2 gap-3">${groups}</div>`;
+    <div class="grid md:grid-cols-2 gap-3 mb-5">${groups}</div>
+    <div class="display font-semibold text-base mb-2 flex items-center gap-2"><span class="ms" style="color:var(--blue)">tune</span>Crew settings <span class="text-xs text-white/40 font-normal">— companies, holidays, and how long each crew's tasks take</span></div>
+    ${settingsView(p)}`;
 }
 function drawCrewChart(){
   const p=activeProject(); const wl=crewWorkload(p);
@@ -741,17 +788,18 @@ function drawProgressCharts(){
 
 /* ============================================================ CHARTS ENGINE */
 let chartReg={};
-function ensureChart(){ if(window.Chart) return Promise.resolve(); return loadScript('https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js'); }
+function ensureChart(){ if(window.Chart) return Promise.resolve(); return loadScript('https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js').then(()=>{ if(window.Chart){ window.Chart.defaults.animation=false; window.Chart.defaults.font.family='Inter'; window.Chart.defaults.color='#97a6bb'; } }); }
 function drawChart(id,cfg){ const cv=document.getElementById(id); if(!cv||!window.Chart) return; if(chartReg[id]) chartReg[id].destroy(); chartReg[id]=new window.Chart(cv.getContext('2d'),cfg); }
 function afterRender(){
+  if(state.nav==='tools'){ if(state.tools.tab!=='list') ensureChart().then(drawToolsCharts); return; }
   if(state.nav!=='schedule') return;
-  if(state.view==='crew') ensureChart().then(drawCrewChart);
+  if(state.view==='crew') ensureChart().then(()=>{ drawCrewChart(); });
   else if(state.view==='progress') ensureChart().then(drawProgressCharts);
 }
 
 /* ============================================================ SETTINGS */
 function settingsView(p){
-  return `<div class="max-w-[1100px] mx-auto px-4 py-4 space-y-4">
+  return `<div class="space-y-4">
     <div class="card p-4">
       <div class="display font-semibold mb-3">Project</div>
       <div class="grid sm:grid-cols-3 gap-3">
@@ -1265,22 +1313,74 @@ function toolsView(){
   const monthly=onSite.reduce((s,a)=>s+(Number(a.unit_cost)||0)*(Number(a.qty)||1),0);
   const lost=all.filter(a=>a.status==='Lost').length;
   const imp=state.tools.config?.lastImportFile||'—';
-  const statuses=['all','On Site','Transferred','Returned','Lost','Damaged'];
+  const isList=state.tools.tab==='list';
+  const seg=`<div class="seg mb-3">
+    <div class="tabbtn flex items-center gap-1 ${!isList?'on':''}" onclick="state.tools.tab='dash'; render(); afterRender()"><span class="ms text-[16px]">grid_view</span><span class="hidden sm:inline">Dashboard</span></div>
+    <div class="tabbtn flex items-center gap-1 ${isList?'on':''}" onclick="state.tools.tab='list'; render()"><span class="ms text-[16px]">list</span><span class="hidden sm:inline">Inventory</span></div>
+  </div>`;
+  const summary=`<div class="flex gap-2 mb-3 flex-wrap">
+    ${statCard('On site', onSite.length, 'inventory_2')}
+    ${statCard('Monthly charge', '$'+monthly.toLocaleString(), 'payments')}
+    ${statCard('Lost', lost, 'report', lost?'#E53935':null)}
+    ${statCard('Total items', all.length, 'category')}
+    <div class="ml-auto self-center text-xs text-white/35">Last import: ${esc(imp)}</div></div>`;
   return `<div class="max-w-[1500px] mx-auto px-4 py-4">
-    <div class="flex gap-2 mb-3 flex-wrap">
-      ${statCard('On site', onSite.length, 'inventory_2')}
-      ${statCard('Monthly charge', '$'+monthly.toLocaleString(), 'payments')}
-      ${statCard('Lost', lost, 'report', lost?'#E53935':null)}
-      ${statCard('Total items', all.length, 'category')}
-      <div class="ml-auto self-center text-xs text-white/35">Last import: ${esc(imp)}</div>
-    </div>
-    <div class="flex gap-2 mb-3 flex-wrap items-center">
+    ${seg}${summary}
+    ${isList ? toolsListSection() : toolsDashSection(all)}
+    <div class="text-xs text-white/35 mt-2">Live sync from Tool Tracker · <a class="underline" href="https://dyap123.github.io/tool-tracker/" target="_blank">open it</a></div>
+  </div>`;
+}
+function toolsListSection(){
+  const statuses=['all','On Site','Transferred','Returned','Lost','Damaged'];
+  return `<div class="flex gap-2 mb-3 flex-wrap items-center">
       <input class="fld w-64" placeholder="Search description, ID, assignee…" oninput="toolsFilter(this.value)" value="${esc(state.tools.q)}">
       <select class="fld" onchange="toolsStatus(this.value)">${statuses.map(s=>`<option value="${s}" ${s===state.tools.status?'selected':''}>${s==='all'?'All statuses':s}</option>`).join('')}</select>
     </div>
-    <div class="card overflow-hidden"><div class="scroll" style="max-height:68vh" id="toolsList">${toolsTableHTML()}</div></div>
-    <div class="text-xs text-white/35 mt-2">Live sync from Tool Tracker · <a class="underline" href="https://dyap123.github.io/tool-tracker/" target="_blank">open it</a></div>
-  </div>`;
+    <div class="card overflow-hidden"><div class="scroll" style="max-height:66vh" id="toolsList">${toolsTableHTML()}</div></div>`;
+}
+function toolCategory(a){
+  if(a.category && a.category.trim()) return a.category.trim().toUpperCase();
+  const d=(a.description||'').trim(); if(!d) return 'UNCATEGORIZED';
+  let base=d.split(/\s*[-–—]\s*/)[0].trim() || d;        // text before the first dash
+  return base.split(/\s+/).slice(0,2).join(' ').toUpperCase(); // first 1–2 words
+}
+function toolsDashSection(all){
+  const cat={}; all.forEach(a=>{ const k=toolCategory(a); cat[k]=cat[k]||{n:0,onsite:0,monthly:0}; cat[k].n++; if(a.status==='On Site'){ cat[k].onsite++; cat[k].monthly+=(Number(a.unit_cost)||0)*(Number(a.qty)||1); } });
+  const cats=Object.entries(cat).sort((a,b)=>b[1].n-a[1].n);
+  const catCards=cats.map(([k,v])=>`<div class="card p-3 cursor-pointer" onclick="state.tools.tab='list'; state.tools.q='${esc(k).replace(/'/g,'')}'; render()" title="View ${esc(k)} in inventory">
+    <div class="lcaps mb-1 truncate" style="font-size:10px">${esc(k)}</div>
+    <div class="display font-bold text-xl">${v.n}</div>
+    <div class="text-xs text-white/50 mt-1">${v.onsite} on site · $${v.monthly.toLocaleString()}/mo</div></div>`).join('');
+  const STAT=[['On Site','#41A447'],['Transferred','#FFBF00'],['Returned','#9AA3AD'],['Lost','#E53935'],['Damaged','#E0639B']];
+  const statusCards=STAT.map(([s,col])=>{ const n=all.filter(a=>a.status===s).length;
+    return `<div class="card px-3 py-2 cursor-pointer" onclick="state.tools.tab='list'; state.tools.status='${s}'; state.tools.q=''; render()">
+      <div class="display font-bold text-lg" style="color:${col}">${n}</div><div class="lcaps" style="font-size:9px">${s}</div></div>`; }).join('');
+  const verified=all.filter(a=>a.verified==='Yes').length, missing=all.filter(a=>a.verified==='Missing').length;
+  return `
+    <div class="grid md:grid-cols-2 gap-3 mb-3">
+      <div class="card p-3"><div class="lcaps mb-2">Top categories</div><div style="height:250px"><canvas id="toolsCatChart"></canvas></div></div>
+      <div class="card p-3"><div class="lcaps mb-2">By status</div><div style="height:250px"><canvas id="toolsStatusChart"></canvas></div></div>
+    </div>
+    <div class="flex gap-2 mb-4 flex-wrap items-center">
+      ${statusCards}
+      <div class="card px-3 py-2"><div class="display font-bold text-lg" style="color:var(--blue)">${verified}</div><div class="lcaps" style="font-size:9px">Verified</div></div>
+      <div class="card px-3 py-2"><div class="display font-bold text-lg" style="color:var(--error)">${missing}</div><div class="lcaps" style="font-size:9px">Missing</div></div>
+    </div>
+    <div class="lcaps mb-2">Categories <span class="text-white/30">— tap to filter the inventory</span></div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">${catCards}</div>`;
+}
+function drawToolsCharts(){
+  const all=Object.values(state.tools.assets||{});
+  const cat={}; all.forEach(a=>{ const k=toolCategory(a); cat[k]=(cat[k]||0)+1; });
+  const top=Object.entries(cat).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  drawChart('toolsCatChart',{ type:'bar',
+    data:{ labels:top.map(x=>x[0]), datasets:[{ data:top.map(x=>x[1]), backgroundColor:'#2f80ed', borderRadius:4 }] },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ x:{beginAtZero:true,ticks:{color:'#97a6bb'},grid:{color:'rgba(255,255,255,.06)'}}, y:{ticks:{color:'#97a6bb',font:{size:10}},grid:{display:false}} } } });
+  const STAT=[['On Site','#41A447'],['Transferred','#FFBF00'],['Returned','#9AA3AD'],['Lost','#E53935'],['Damaged','#E0639B']];
+  drawChart('toolsStatusChart',{ type:'doughnut',
+    data:{ labels:STAT.map(x=>x[0]), datasets:[{ data:STAT.map(([s])=>all.filter(a=>a.status===s).length), backgroundColor:STAT.map(x=>x[1]), borderWidth:0 }] },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{legend:{position:'bottom',labels:{color:'#dbe4ef',boxWidth:12,font:{size:11}}}} } });
 }
 
 /* small shared UI bits */

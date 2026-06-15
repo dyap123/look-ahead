@@ -435,6 +435,7 @@ function buildView(p){
     <div class="flex items-center gap-2 mb-3 flex-wrap">
       <button class="btn btn-ghost" onclick="openInsertCycle()"><span class="ms text-[18px]">library_add</span>Insert Cycle</button>
       <button class="btn btn-ghost" onclick="addSection()"><span class="ms text-[18px]">add</span>Add Section</button>
+      <button class="btn btn-ghost" onclick="openImport()" title="Import a CSV, Excel, or PDF schedule"><span class="ms text-[18px]">upload_file</span>Import</button>
       <button class="btn btn-ghost btn-sm" onclick="toggleAllCollapse()" title="Collapse or expand all sections"><span class="ms text-[16px]">${allCollapsed()?'unfold_more':'unfold_less'}</span>${allCollapsed()?'Expand all':'Collapse all'}</button>
       <div class="flex items-center gap-1 ml-1">
         <button class="icobtn ${undoStack.length?'':'opacity-30'}" title="Undo (⌘Z)" onclick="undo()"><span class="ms text-[18px]">undo</span></button>
@@ -1009,6 +1010,141 @@ async function exportXLSX(){
   XLSX.writeFile(wb, `LACC_Look_Ahead_${today[1]}.${today[2]}.${today[0]}.xlsx`);
   toast('Excel ready','ok');
 }
+
+/* ============================================================ IMPORT (CSV / XLSX / PDF) */
+function ensurePdfjs(){ if(window.pdfjsLib) return Promise.resolve();
+  return loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js').then(()=>{ window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; });
+}
+function parseAnyDate(v){
+  if(v==null) return null; const s=String(v).trim(); if(!s) return null;
+  let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if(m) return `${m[1]}-${pad(+m[2])}-${pad(+m[3])}`;
+  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if(m){ let y=m[3]; if(y.length===2) y='20'+y; return `${y}-${pad(+m[1])}-${pad(+m[2])}`; }
+  m=s.match(/^(\d{1,2})\/(\d{1,2})$/); if(m) return `${new Date().getFullYear()}-${pad(+m[1])}-${pad(+m[2])}`;
+  const d=new Date(s); if(!isNaN(d)) return fmtYMD(d);
+  return null;
+}
+const IMP_KNOWN=['Bali','Webcor','WCG','Zarp','CMC','Sharma','Malcom','Malcolm','SME','Murray','Inspection','Cure','Pour','Survey','Delay'];
+function normCompany(c){ if(!c) return ''; const m={wcg:'Webcor',webcor:'Webcor',malcolm:'Malcom'}; return m[c.toLowerCase()]||c.trim(); }
+function resolveCompany(name){
+  if(!name) return companyList()[0]?.id || 'webcor';
+  const n=normCompany(name).toLowerCase();
+  for(const [id,c] of Object.entries(state.companies)){ if(c.name.toLowerCase()===n || (c.letter||'').toLowerCase()===n) return id; }
+  const palette=['#7E57C2','#E0639B','#B5651D','#D2691E','#00897B','#C0CA33','#5C6BC0','#26A69A'];
+  const id=uid('co_'); state.companies[id]={ name:normCompany(name), letter:normCompany(name).replace(/[^A-Za-z]/g,'').slice(0,2).toUpperCase()||'X', color:palette[Object.keys(state.companies).length%palette.length], order:companyList().length };
+  return id;
+}
+async function parseSheetRows(file){
+  await ensureLibs(); const buf=await file.arrayBuffer();
+  const wb=window.XLSX.read(buf,{type:'array'});
+  const sh=wb.SheetNames.find(n=>/sched/i.test(n))||wb.SheetNames[0];
+  const aoa=window.XLSX.utils.sheet_to_json(wb.Sheets[sh],{header:1,raw:false,defval:''});
+  return { rows:rowsFromAoa(aoa), source:'sheet' };
+}
+function rowsFromAoa(aoa){
+  if(!aoa.length) return [];
+  let hi=aoa.findIndex(r=>r.some(c=>/task|activity/i.test(String(c)))); if(hi<0) hi=0;
+  const head=aoa[hi].map(c=>String(c).toLowerCase().trim());
+  const col=(...keys)=>head.findIndex(h=>keys.some(k=>h.includes(k)));
+  const ci={ name:col('task','activity','description'), start:col('start'), finish:col('finish','end'), days:col('days','duration','dur'), company:col('company','crew','sub','contractor'), section:col('section','grid','area','phase','group') };
+  if(ci.name<0) ci.name=0;
+  const rows=[]; let curSection='';
+  for(let i=hi+1;i<aoa.length;i++){
+    const r=aoa[i]; if(!r || r.every(c=>String(c).trim()==='')) continue;
+    const name=String(r[ci.name]||'').trim();
+    const startV=ci.start>=0?String(r[ci.start]||'').trim():'';
+    const daysV=ci.days>=0?String(r[ci.days]||'').trim():'';
+    const explicitSec=ci.section>=0?String(r[ci.section]||'').trim():'';
+    if(explicitSec){ curSection=explicitSec; }
+    // a row with only a name (no date/days, no other section concept) is a section band (our own export format)
+    if(name && !startV && !daysV && ci.section<0 && r.filter(c=>String(c).trim()!=='').length<=1){ curSection=name; continue; }
+    if(!name) continue;
+    rows.push({ section:curSection, name, start:parseAnyDate(startV), finish:parseAnyDate(ci.finish>=0?r[ci.finish]:''), days:parseInt(daysV)||null, company:ci.company>=0?String(r[ci.company]||'').trim():'' });
+  }
+  return rows;
+}
+async function parsePdfRows(file){
+  await ensurePdfjs(); const buf=await file.arrayBuffer();
+  const pdf=await window.pdfjsLib.getDocument({data:buf}).promise; const lines=[];
+  for(let pn=1;pn<=pdf.numPages;pn++){
+    const page=await pdf.getPage(pn); const tc=await page.getTextContent(); const byY={};
+    tc.items.forEach(it=>{ const y=Math.round(it.transform[5]); (byY[y]=byY[y]||[]).push(it); });
+    Object.keys(byY).map(Number).sort((a,b)=>b-a).forEach(y=>{ const t=byY[y].sort((a,b)=>a.transform[4]-b.transform[4]).map(i=>i.str).join(' ').replace(/\s+/g,' ').trim(); if(t) lines.push(t); });
+  }
+  return { rows:rowsFromPdfLines(lines), source:'pdf' };
+}
+function rowsFromPdfLines(lines){
+  const secRe=/(grid ?line|pile ?caps|grade ?beams|^cup\s|^section\b|section \d|south hall|podium)/i;
+  const dateG=/\d{1,2}\/\d{1,2}\/\d{2,4}/g;
+  const rows=[]; let curSection='Schedule'; let buf='';
+  const flush=()=>{ const b=buf.trim(); buf='';
+    const dates=b.match(dateG); if(!dates||dates.length<2) return;
+    let name=b.slice(0,b.indexOf(dates[0])).trim();
+    let days=null; const g=b.match(/(\d+)(?=[A-Z][a-z])/); if(g) days=+g[1];
+    if(days==null){ const a=b.slice(b.indexOf(dates[1])+dates[1].length).match(/\b(\d+)\b/); if(a) days=+a[1]; }
+    let company=''; for(const k of IMP_KNOWN){ if(new RegExp(k,'i').test(b)){ company=k; break; } }
+    name=name.replace(new RegExp('^('+IMP_KNOWN.join('|')+')\\s+','i'),'');
+    name=name.replace(new RegExp('\\s+('+IMP_KNOWN.join('|')+')$','i'),'');
+    name=name.replace(/\s*\d+[A-Za-z].*$/,'').replace(/(\s+[A-Z]\b)+\s*$/,'').trim();
+    if(name) rows.push({ section:curSection, name, start:parseAnyDate(dates[0]), finish:parseAnyDate(dates[1]), days, company:normCompany(company) });
+  };
+  lines.forEach(line=>{
+    if(secRe.test(line) && !dateG.test(line) && line.length<55){ flush(); curSection=line.trim(); return; }
+    buf+=' '+line; const d=buf.match(dateG); if(d&&d.length>=2) flush();
+  });
+  flush();
+  return rows;
+}
+function buildScheduleFromRows(name, rows){
+  if(!rows.length){ toast('No tasks found to import','warn'); return; }
+  const pid=uid('p_');
+  const starts=rows.map(r=>r.start).filter(Boolean).sort();
+  let anchor=starts[0]; if(!anchor){ anchor=fmtYMD(new Date()); while(dow(anchor)!==1) anchor=addDays(anchor,1); }
+  const proj={ id:pid, name:name||'Imported Schedule', subtitle:'Look Ahead Schedule', startDate:anchor, sections:{}, tasks:{} };
+  const secId={}; let so=0;
+  rows.forEach(r=>{ const sn=(r.section||'Schedule').trim()||'Schedule'; if(!secId[sn]){ const sid=uid('s_'); secId[sn]=sid; proj.sections[sid]={name:sn,order:so++}; } });
+  const ord={};
+  rows.forEach(r=>{ const sn=(r.section||'Schedule').trim()||'Schedule'; const sid=secId[sn]; const o=(ord[sid]=ord[sid]||0); ord[sid]++;
+    let days=r.days; if(!days||days<1) days=(r.start&&r.finish)? workingDaysBetween(r.start,r.finish,state.holidays).length : 1;
+    const tid=uid('t_'); proj.tasks[tid]={ sectionId:sid, order:o, name:r.name||'Task', companyId:resolveCompany(r.company), days, depMode:'manual', start:r.start||anchor, depId:null, lag:0, linkedPourId:null };
+  });
+  state.projects[pid]=proj; state.meta.activeProjectId=pid; state.nav='schedule'; state.view='build';
+  recomputeActive(); render(); saveActive(); saveCompanies();
+  toast(`Imported ${Object.keys(proj.tasks).length} tasks into "${proj.name}"`);
+}
+let importRows=[], importName='';
+function openImport(){
+  $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-5 w-full max-w-lg">
+    <div class="display font-semibold text-lg mb-1">Import a schedule</div>
+    <div class="text-xs text-white/55 mb-3">Creates a new schedule from a file. <b>CSV / Excel</b> is reliable; <b>PDF</b> is best-effort — review the rows after import.</div>
+    <input id="impFile" type="file" accept=".csv,.xlsx,.xls,.pdf" style="display:none" onchange="handleImportFile(this.files[0])">
+    <div class="rounded-xl p-8 text-center cursor-pointer" style="border:2px dashed var(--outline-v)" onclick="document.getElementById('impFile').click()" ondragover="event.preventDefault()" ondrop="event.preventDefault(); handleImportFile(event.dataTransfer.files[0])">
+      <span class="ms text-[36px] text-white/40">upload_file</span>
+      <div class="mt-2 text-sm">Drop a file here or <span style="color:var(--primary)">browse</span></div>
+      <div class="text-xs text-white/35 mt-1">.csv · .xlsx · .pdf</div>
+    </div>
+    <div id="impResult" class="mt-3"></div>
+    <div class="flex justify-end mt-4"><button class="btn btn-ghost" onclick="closeModal()">Cancel</button></div>
+  </div></div>`;
+}
+async function handleImportFile(file){
+  if(!file) return;
+  $('#impResult').innerHTML=`<div class="text-sm text-white/60"><span class="ms text-[16px]">hourglass_top</span> Reading ${esc(file.name)}…</div>`;
+  try{
+    const ext=(file.name.split('.').pop()||'').toLowerCase();
+    const res= ext==='pdf' ? await parsePdfRows(file) : await parseSheetRows(file);
+    importRows=res.rows; importName=file.name.replace(/\.[^.]+$/,'');
+    if(!importRows.length){ $('#impResult').innerHTML=`<div class="text-sm" style="color:var(--error)">Couldn't find tasks — make sure the file has Task / Start / Finish columns.</div>`; return; }
+    const secs=new Set(importRows.map(r=>r.section||'Schedule'));
+    const prev=importRows.slice(0,6).map(r=>`<div class="flex gap-2 text-xs py-0.5"><span class="flex-1 truncate">${esc(r.name)}</span><span class="mono text-white/45">${esc(fmtMD(r.start)||'—')}</span><span class="text-white/45 w-16 text-right truncate">${esc(r.company||'—')}</span></div>`).join('');
+    $('#impResult').innerHTML=`<div class="card p-3">
+      <div class="flex items-center gap-2"><span class="ms" style="color:var(--primary)">check_circle</span><span><b>${importRows.length} tasks</b> · <b>${secs.size} section${secs.size>1?'s':''}</b></span>${res.source==='pdf'?'<span class="text-amber-300 text-xs ml-1">PDF — review after import</span>':''}</div>
+      <label class="text-xs text-white/50 block mt-2">Schedule name<input id="impName" class="fld w-full mt-1" value="${esc(importName)}"></label>
+      <div class="mt-2 border-t border-white/10 pt-2">${prev}${importRows.length>6?`<div class="text-xs text-white/35 mt-1">+${importRows.length-6} more…</div>`:''}</div>
+      <button class="btn btn-green w-full mt-3" onclick="doImport()"><span class="ms">download_done</span>Create schedule</button>
+    </div>`;
+  }catch(e){ console.error(e); $('#impResult').innerHTML=`<div class="text-sm" style="color:var(--error)">Couldn't read that file: ${esc(e.message||e)}</div>`; }
+}
+function doImport(){ const nm=(document.getElementById('impName')&&document.getElementById('impName').value)||importName; closeModal(); buildScheduleFromRows(nm, importRows); }
 
 /* ============================================================ ATTENDANCE (reads foreman-attendance/) */
 function ensureAttendance(){

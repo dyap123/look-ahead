@@ -80,6 +80,17 @@
   .trow .handle{ color:var(--outline-v); cursor:grab; opacity:0; }
   .trow:hover .handle{ opacity:1; }
   @media (max-width:880px){ .trow{ grid-template-columns: 16px 1fr 38px 96px 40px 130px auto; gap:6px; } .trow .col-finish{ display:none; } }
+  /* look-ahead calendar */
+  .la-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  @media (max-width:900px){ .la-grid{ grid-template-columns:repeat(2,1fr); } }
+  .la-day{ background:rgba(255,255,255,.02); border:1px solid rgba(255,255,255,.06); border-radius:6px; min-height:92px; display:flex; flex-direction:column; }
+  .la-day.wknd{ background:rgba(137,148,130,.05); }
+  .la-day.today{ box-shadow:inset 0 0 0 1px var(--blue); }
+  .la-dhead{ font-family:'Saira',sans-serif; font-weight:600; font-size:11px; padding:5px 7px; border-bottom:1px solid rgba(255,255,255,.06); color:var(--on-var); }
+  .la-cells{ padding:5px; display:flex; flex-direction:column; gap:4px; }
+  .la-chip{ display:flex; align-items:center; gap:5px; font-size:11px; background:rgba(255,255,255,.04); padding:3px 5px; border-radius:4px; cursor:pointer; }
+  .la-chip:hover{ background:rgba(255,255,255,.09); }
+  .la-chip .truncate{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .modalwrap{ position:fixed; inset:0; background:rgba(0,0,0,.66); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px; }
   .toast{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); padding:10px 16px; border-radius:8px; font-weight:600; font-size:13px; z-index:80; box-shadow:0 10px 30px -10px #000; }
 </style>
@@ -96,6 +107,7 @@ const state = {
   nav: 'schedule',
   companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
   resolved: {}, online: false, showPreview: true, seeded: false, collapsed: {},
+  view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company',
   tools: { assets:{}, config:{}, loaded:false, q:'', status:'all' },
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
 };
@@ -373,6 +385,7 @@ function render(){
   else if(state.nav==='settings') view=settingsView(p);
   else view=builderView(p);
   $('#app').innerHTML = header() + view;
+  if(typeof afterRender==='function') afterRender();
 }
 function setNav(id){ state.nav=id; render(); if(id==='attendance') ensureAttendance(); if(id==='tools') ensureTools(); }
 function header(){
@@ -402,8 +415,21 @@ function header(){
   </div>`;
 }
 
+function setView(v){ state.view=v; render(); afterRender(); }
+function viewSwitcher(){
+  const item=(id,label,icon)=>`<div class="tabbtn flex items-center gap-1 ${state.view===id?'on':''}" onclick="setView('${id}')"><span class="ms text-[16px]">${icon}</span><span class="hidden sm:inline">${label}</span></div>`;
+  return `<div class="seg mb-3">${item('build','Build','edit_note')}${item('lookahead','Look-Ahead','calendar_view_week')}${item('crew','Crew','groups')}${item('progress','Progress','insights')}</div>`;
+}
 function builderView(p){
-  return `<div class="max-w-[1500px] mx-auto px-4 py-4">
+  let sub;
+  if(state.view==='lookahead') sub=lookAheadView(p);
+  else if(state.view==='crew') sub=crewView(p);
+  else if(state.view==='progress') sub=progressView(p);
+  else sub=buildView(p);
+  return `<div class="max-w-[1500px] mx-auto px-4 py-4">${viewSwitcher()}${sub}</div>`;
+}
+function buildView(p){
+  return `
     <div class="flex items-center gap-2 mb-3 flex-wrap">
       <button class="btn btn-ghost" onclick="openInsertCycle()"><span class="ms text-[18px]">library_add</span>Insert Cycle</button>
       <button class="btn btn-ghost" onclick="addSection()"><span class="ms text-[18px]">add</span>Add Section</button>
@@ -418,8 +444,7 @@ function builderView(p){
       </div>
     </div>
     ${editorPanel(p)}
-    ${state.showPreview ? `<div class="mt-5">${ganttPanel(p)}</div>` : ''}
-  </div>`;
+    ${state.showPreview ? `<div class="mt-5">${ganttPanel(p)}</div>` : ''}`;
 }
 
 function editorPanel(p){
@@ -533,6 +558,171 @@ function ganttPanel(p){
       </table>
     </div>
   </div>`;
+}
+
+/* ============================================================ STATUS */
+const STATUS=[
+  {id:'todo',  label:'Not started', color:'#6b7686', icon:'radio_button_unchecked'},
+  {id:'doing', label:'In progress', color:'#2f80ed', icon:'pending'},
+  {id:'done',  label:'Done',        color:'#41A447', icon:'check_circle'},
+];
+function taskStatus(t){ return t.status||'todo'; }
+function statusMeta(id){ return STATUS.find(s=>s.id===id)||STATUS[0]; }
+function setTaskStatus(tid,st){ const p=activeProject(); const t=p.tasks[tid]; if(!t)return; pushUndo(); t.status=st; render(); afterRender(); saveActive(); }
+function cycleStatus(tid){ const order=['todo','doing','done']; const cur=taskStatus(activeProject().tasks[tid]); setTaskStatus(tid, order[(order.indexOf(cur)+1)%3]); }
+
+/* ============================================================ LOOK-AHEAD (3-week) */
+function weekMonday(ymd){ let s=ymd; while(dow(s)!==1) s=addDays(s,-1); return s; }
+function tasksOnDay(p,d){
+  const out=[];
+  Object.entries(p.tasks).forEach(([tid,t])=>{ const r=state.resolved[tid]; if(r && r.start<=d && d<=r.finish && isWorkday(d,state.holidays)) out.push({tid,...t}); });
+  return out.sort((a,b)=>(a.sectionId+a.order).localeCompare(b.sectionId+b.order));
+}
+function lookAheadView(p){
+  const today=fmtYMD(new Date());
+  let wkStart=weekMonday(today); for(let i=0;i<state.laOffset;i++) wkStart=addDays(wkStart,7);
+  const DW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  let weeks='';
+  for(let w=0; w<state.laWeeks; w++){
+    const ws=addDays(wkStart, w*7);
+    const days=[]; for(let i=0;i<7;i++) days.push(addDays(ws,i));
+    const cols=days.map((d,i)=>{
+      const hol=isHoliday(d,state.holidays);
+      const chips=tasksOnDay(p,d).map(t=>{
+        const c=state.companies[t.companyId]||{color:'#888',letter:'?'}; const done=taskStatus(t)==='done'; const st=statusMeta(taskStatus(t));
+        return `<div class="la-chip" style="border-left:3px solid ${c.color};${done?'opacity:.55':''}" onclick="cycleStatus('${t.tid}')" title="${esc(t.name)} · ${esc(c.name)} · ${st.label} (click to advance)">
+          <span class="codot" style="width:15px;height:15px;font-size:8px;background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span>
+          <span class="truncate ${done?'line-through':''}">${esc(t.name)}</span></div>`;
+      }).join('') || '<div class="text-white/20 text-xs px-1.5 py-1">—</div>';
+      return `<div class="la-day ${isWeekend(d)?'wknd':''} ${d===today?'today':''}">
+        <div class="la-dhead">${DW[i]} <span class="mono text-white/45">${fmtMD(d)}</span>${hol?`<div class="text-[9px]" style="color:var(--error)">${esc(state.holidays[d])}</div>`:''}</div>
+        <div class="la-cells">${chips}</div></div>`;
+    }).join('');
+    weeks+=`<div class="card mb-3 p-3">
+      <div class="lcaps mb-2" style="color:var(--blue)">Week of ${fmtMD(ws)}${w===0&&state.laOffset===0?' · This week':''}</div>
+      <div class="la-grid">${cols}</div></div>`;
+  }
+  return `
+    <div class="flex items-center gap-2 mb-3 flex-wrap">
+      <button class="icobtn" title="Earlier" onclick="state.laOffset--; render()"><span class="ms">chevron_left</span></button>
+      <button class="btn btn-ghost btn-sm" onclick="state.laOffset=0; render()">This week</button>
+      <button class="icobtn" title="Later" onclick="state.laOffset++; render()"><span class="ms">chevron_right</span></button>
+      <span class="text-xs text-white/45 ml-2">Showing</span>
+      <select class="fld" onchange="state.laWeeks=+this.value; render()">${[2,3,4,6].map(n=>`<option value="${n}" ${n===state.laWeeks?'selected':''}>${n} weeks</option>`).join('')}</select>
+      <span class="text-xs text-white/35 ml-auto">Tap a task to mark Not started → In progress → Done</span>
+    </div>
+    ${weeks}`;
+}
+
+/* ============================================================ CREW VIEW */
+function crewWorkload(p){ const m={}; Object.entries(p.tasks).forEach(([tid,t])=>{ const r=state.resolved[tid]; if(!r)return; m[t.companyId]=(m[t.companyId]||0)+workingDaysBetween(r.start,r.finish,state.holidays).length; }); return m; }
+const NON_CREW=new Set(['cure','inspect','pour','survey']); // passive / events: not crew-conflicts
+function crewConflicts(p){
+  const days=ganttWindow(p); const out=[];
+  days.forEach(d=>{ if(!isWorkday(d,state.holidays))return;
+    const byCo={};
+    Object.entries(p.tasks).forEach(([tid,t])=>{ const r=state.resolved[tid]; if(r&&r.start<=d&&d<=r.finish&&!NON_CREW.has(t.companyId)) (byCo[t.companyId]=byCo[t.companyId]||[]).push({tid,...t}); });
+    Object.entries(byCo).forEach(([cid,arr])=>{ const secs=new Set(arr.map(x=>x.sectionId)); if(secs.size>1) out.push({company:cid,day:d,tasks:arr,secs:[...secs]}); });
+  });
+  return out;
+}
+function crewView(p){
+  const wl=crewWorkload(p);
+  const conflicts=crewConflicts(p);
+  // conflict summary: per company, count of conflicted days
+  const byCo={}; conflicts.forEach(c=>{ byCo[c.company]=byCo[c.company]||new Set(); byCo[c.company].add(c.day); });
+  const confCards=Object.keys(byCo).length ? Object.entries(byCo).map(([cid,daySet])=>{
+    const c=state.companies[cid]||{name:cid,color:'#888',letter:'?'};
+    return `<div class="flex items-center gap-2 px-3 py-2 rounded" style="background:rgba(229,57,53,.1);border:1px solid rgba(229,57,53,.25)">
+      <span class="codot" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span>
+      <span class="font-semibold">${esc(c.name)}</span>
+      <span class="text-white/60 text-sm">double-booked across grid lines on <b style="color:var(--error)">${daySet.size}</b> day${daySet.size>1?'s':''}</span>
+      <span class="mono text-xs text-white/40 ml-auto">${[...daySet].slice(0,6).map(fmtMD).join(', ')}${daySet.size>6?'…':''}</span></div>`;
+  }).join('') : `<div class="px-3 py-2 rounded text-sm" style="background:rgba(65,164,71,.1);border:1px solid rgba(65,164,71,.25);color:#86e08f">✓ No crew double-booked across grid lines.</div>`;
+  // per-crew task groups
+  const groups=companyList().filter(c=>wl[c.id]).sort((a,b)=>wl[b.id]-wl[a.id]).map(c=>{
+    const tks=Object.entries(p.tasks).filter(([,t])=>t.companyId===c.id).map(([tid,t])=>({tid,...t,r:state.resolved[tid]})).filter(x=>x.r).sort((a,b)=>a.r.start.localeCompare(b.r.start));
+    const rows=tks.map(t=>{ const sec=p.sections[t.sectionId]?.name||''; const st=statusMeta(taskStatus(t));
+      return `<div class="flex items-center gap-2 px-2 py-1 text-sm border-b border-white/5">
+        <span class="ms text-[15px]" style="color:${st.color}">${st.icon}</span>
+        <span class="flex-1 truncate">${esc(t.name)} <span class="text-white/35 text-xs">· ${esc(sec)}</span></span>
+        <span class="mono text-xs text-white/55">${fmtMD(t.r.start)}–${fmtMD(t.r.finish)}</span></div>`;}).join('');
+    return `<div class="card overflow-hidden">
+      <div class="flex items-center gap-2 px-3 py-2" style="background:rgba(255,255,255,.03)">
+        <span class="codot" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span>
+        <span class="display font-semibold flex-1">${esc(c.name)}</span>
+        <span class="lcaps">${wl[c.id]} working days</span></div>
+      ${rows}</div>`;
+  }).join('');
+  return `
+    <div class="card p-3 mb-3"><div class="lcaps mb-2">Workload — working days per crew</div><div style="height:230px"><canvas id="crewChart"></canvas></div></div>
+    <div class="card p-3 mb-3"><div class="lcaps mb-2">Crew conflicts</div><div class="space-y-1.5">${confCards}</div></div>
+    <div class="grid md:grid-cols-2 gap-3">${groups}</div>`;
+}
+function drawCrewChart(){
+  const p=activeProject(); const wl=crewWorkload(p);
+  const cos=companyList().filter(c=>wl[c.id]).sort((a,b)=>wl[b.id]-wl[a.id]);
+  drawChart('crewChart',{ type:'bar',
+    data:{ labels:cos.map(c=>c.name), datasets:[{ data:cos.map(c=>wl[c.id]), backgroundColor:cos.map(c=>c.color), borderRadius:4 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{color:'#97a6bb',font:{size:11}},grid:{display:false}}, y:{beginAtZero:true,ticks:{color:'#97a6bb'},grid:{color:'rgba(255,255,255,.06)'}} } } });
+}
+
+/* ============================================================ PROGRESS VIEW */
+function progressView(p){
+  const tasks=Object.entries(p.tasks).map(([tid,t])=>({tid,...t,r:state.resolved[tid]})).filter(x=>x.r);
+  const cnt={todo:0,doing:0,done:0}; let totWd=0, doneWd=0;
+  tasks.forEach(t=>{ cnt[taskStatus(t)]++; const wd=workingDaysBetween(t.r.start,t.r.finish,state.holidays).length; totWd+=wd; if(taskStatus(t)==='done') doneWd+=wd; });
+  const pct=totWd?Math.round(doneWd/totWd*100):0;
+  const list=tasks.sort((a,b)=>a.r.start.localeCompare(b.r.start)).map(t=>{
+    const c=state.companies[t.companyId]||{color:'#888',letter:'?'};
+    const btns=STATUS.map(s=>`<button class="icobtn" title="${s.label}" onclick="setTaskStatus('${t.tid}','${s.id}')" style="${taskStatus(t)===s.id?'color:'+s.color+';background:rgba(255,255,255,.06)':''}"><span class="ms text-[18px]">${s.icon}</span></button>`).join('');
+    return `<div class="flex items-center gap-2 px-2 py-1.5 border-b border-white/5">
+      <span class="codot" style="width:18px;height:18px;font-size:9px;background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span>
+      <span class="flex-1 truncate text-sm">${esc(t.name)} <span class="text-white/30 text-xs">· ${esc(p.sections[t.sectionId]?.name||'')}</span></span>
+      <span class="mono text-xs text-white/45">${fmtMD(t.r.start)}–${fmtMD(t.r.finish)}</span>
+      <div class="flex gap-0.5">${btns}</div></div>`;
+  }).join('');
+  return `
+    <div class="flex gap-2 mb-3 flex-wrap">
+      ${statCard('Complete', pct+'%', 'task_alt', pct>=100?'#41A447':null)}
+      ${statCard('Done', cnt.done, 'check_circle', '#41A447')}
+      ${statCard('In progress', cnt.doing, 'pending', '#2f80ed')}
+      ${statCard('Not started', cnt.todo, 'radio_button_unchecked')}
+    </div>
+    <div class="grid md:grid-cols-2 gap-3 mb-3">
+      <div class="card p-3"><div class="lcaps mb-2">Status</div><div style="height:230px"><canvas id="statusDonut"></canvas></div></div>
+      <div class="card p-3"><div class="lcaps mb-2">Progress — planned vs done (cumulative working days)</div><div style="height:230px"><canvas id="sCurve"></canvas></div></div>
+    </div>
+    <div class="card overflow-hidden"><div class="lcaps px-3 py-2" style="background:rgba(255,255,255,.03)">Set task status</div><div class="scroll" style="max-height:46vh">${list}</div></div>`;
+}
+function drawProgressCharts(){
+  const p=activeProject();
+  const cnt={todo:0,doing:0,done:0}; Object.values(p.tasks).forEach(t=>cnt[taskStatus(t)]++);
+  drawChart('statusDonut',{ type:'doughnut',
+    data:{ labels:['Not started','In progress','Done'], datasets:[{ data:[cnt.todo,cnt.doing,cnt.done], backgroundColor:['#6b7686','#2f80ed','#41A447'], borderWidth:0 }] },
+    options:{ responsive:true, maintainAspectRatio:false, cutout:'62%', plugins:{legend:{position:'bottom',labels:{color:'#dbe4ef',boxWidth:12}}} } });
+  const days=ganttWindow(p); const labels=[],planned=[],actual=[];
+  const tasks=Object.entries(p.tasks).map(([tid,t])=>({tid,...t,r:state.resolved[tid]})).filter(x=>x.r);
+  days.forEach((d,i)=>{ if(i%3!==0 && i!==days.length-1) return; let pl=0,ac=0;
+    tasks.forEach(t=>{ const wd=workingDaysBetween(t.r.start,t.r.finish,state.holidays).length; if(t.r.finish<=d){ pl+=wd; if(taskStatus(t)==='done') ac+=wd; } });
+    labels.push(fmtMD(d)); planned.push(pl); actual.push(ac); });
+  drawChart('sCurve',{ type:'line',
+    data:{ labels, datasets:[
+      {label:'Planned',data:planned,borderColor:'#2f80ed',backgroundColor:'rgba(47,128,237,.15)',fill:true,tension:.3,pointRadius:0},
+      {label:'Actual (done)',data:actual,borderColor:'#41A447',backgroundColor:'rgba(65,164,71,.12)',fill:true,tension:.3,pointRadius:0} ] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{labels:{color:'#dbe4ef',boxWidth:12}}},
+      scales:{ x:{ticks:{color:'#97a6bb',maxTicksLimit:9,font:{size:10}},grid:{display:false}}, y:{beginAtZero:true,ticks:{color:'#97a6bb'},grid:{color:'rgba(255,255,255,.06)'}} } } });
+}
+
+/* ============================================================ CHARTS ENGINE */
+let chartReg={};
+function ensureChart(){ if(window.Chart) return Promise.resolve(); return loadScript('https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js'); }
+function drawChart(id,cfg){ const cv=document.getElementById(id); if(!cv||!window.Chart) return; if(chartReg[id]) chartReg[id].destroy(); chartReg[id]=new window.Chart(cv.getContext('2d'),cfg); }
+function afterRender(){
+  if(state.nav!=='schedule') return;
+  if(state.view==='crew') ensureChart().then(drawCrewChart);
+  else if(state.view==='progress') ensureChart().then(drawProgressCharts);
 }
 
 /* ============================================================ SETTINGS */

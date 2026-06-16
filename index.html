@@ -93,9 +93,9 @@
   .statusdot{ display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:6px; cursor:pointer; background:transparent; border:none; }
   .statusdot:hover{ background:rgba(255,255,255,.08); }
   @media (max-width:880px){ .trow{ grid-template-columns: 44px 1fr 38px 96px 40px 124px auto; gap:6px; } .trow .col-finish{ display:none; } }
-  /* split build view: compress the editor (drop derived Finish col) so the name has room */
-  .split-editor .trow{ grid-template-columns: 44px 1fr 36px 90px 34px 112px auto; gap:5px; }
-  .split-editor .col-finish{ display:none; }
+  /* split build view: compact editor (select, status, name, days, company, actions);
+     dates live in the Gantt beside it, full edit via the row's edit popover */
+  .split-editor .trow{ grid-template-columns: 46px 1fr 40px 122px auto; gap:6px; }
   /* fit-to-screen: tiny day cells become colored bars (letters hidden) */
   .gantt.tiny .day, .gantt.tiny .day *{ font-size:0 !important; }
   /* look-ahead calendar */
@@ -448,7 +448,8 @@ function builderView(p){
   else if(state.view==='crew') sub=crewView(p);
   else if(state.view==='progress') sub=progressView(p);
   else sub=buildView(p);
-  return `<div class="max-w-[1500px] mx-auto px-4 py-4">${viewSwitcher()}${sub}</div>`;
+  const wide = state.view==='build' && state.buildLayout==='split';
+  return `<div class="${wide?'max-w-[1840px]':'max-w-[1500px]'} mx-auto px-4 py-4">${viewSwitcher()}${sub}</div>`;
 }
 function buildView(p){
   const split = state.buildLayout==='split';
@@ -473,15 +474,15 @@ function buildView(p){
     </div>`;
   if(split){
     return `${toolbar}
-      <div class="flex flex-col xl:flex-row gap-3 items-start">
-        <div class="split-editor xl:w-[45%] w-full min-w-0">${editorPanel(p)}</div>
+      <div class="flex flex-col xl:flex-row gap-4 items-start">
+        <div class="split-editor xl:flex-none xl:w-[34%] xl:min-w-[430px] xl:max-w-[560px] w-full min-w-0">${editorPanel(p, true)}</div>
         <div class="xl:flex-1 w-full min-w-0 xl:sticky" style="top:58px">${ganttPanel(p)}</div>
       </div>`;
   }
-  return `${toolbar}${editorPanel(p)}${state.showPreview ? `<div class="mt-5">${ganttPanel(p)}</div>` : ''}`;
+  return `${toolbar}${editorPanel(p, false)}${state.showPreview ? `<div class="mt-5">${ganttPanel(p)}</div>` : ''}`;
 }
 
-function editorPanel(p){
+function editorPanel(p, compact){
   const secs=sectionList(p);
   if(!secs.length) return `<div class="card p-8 text-center text-white/50">No sections yet. Click <b>Insert Cycle</b> to drop in a full foundation sequence, or <b>Add Section</b>.</div>`;
   return bulkBar() + secs.map(s=>{
@@ -489,7 +490,10 @@ function editorPanel(p){
     const collapsed=!!state.collapsed[s.id];
     const doneN=tasks.filter(t=>taskStatus(t)==='done').length;
     const allSel=tasks.length>0 && tasks.every(t=>state.sel[t.id]);
-    const rows=tasks.map(t=>taskRow(p,t)).join('');
+    const rows=tasks.map(t=>taskRow(p,t,compact)).join('');
+    const headRow = compact
+      ? `<div class="flex items-center"><input type="checkbox" class="selbox" ${allSel?'checked':''} onclick="selAllSection('${s.id}', this.checked)" title="Select all in section"></div><div>Name</div><div class="text-center">Days</div><div>Company</div><div></div>`
+      : `<div class="flex items-center"><input type="checkbox" class="selbox" ${allSel?'checked':''} onclick="selAllSection('${s.id}', this.checked)" title="Select all in section"></div><div>Name</div><div class="text-center">Days</div><div>Start</div><div class="col-finish">Finish</div><div class="text-center">Link</div><div>Company</div><div></div>`;
     return `<div class="card mb-4 overflow-hidden">
       <div class="secband-edit">
         <button class="icobtn" title="${collapsed?'Expand':'Collapse'} section" onclick="toggleCollapse('${s.id}')" style="color:var(--blue)"><span class="ms text-[20px]">${collapsed?'chevron_right':'expand_more'}</span></button>
@@ -502,9 +506,7 @@ function editorPanel(p){
         <button class="icobtn" title="Duplicate section" onclick="duplicateSection('${s.id}')"><span class="ms text-[18px]">content_copy</span></button>
         <button class="icobtn" title="Delete section" onclick="delSection('${s.id}')"><span class="ms text-[18px]">delete</span></button>
       </div>
-      ${collapsed ? '' : `<div class="trow lcaps">
-        <div class="flex items-center"><input type="checkbox" class="selbox" ${allSel?'checked':''} onclick="selAllSection('${s.id}', this.checked)" title="Select all in section"></div><div>Name</div><div class="text-center">Days</div><div>Start</div><div class="col-finish">Finish</div><div class="text-center">Link</div><div>Company</div><div></div>
-      </div>
+      ${collapsed ? '' : `<div class="trow lcaps">${headRow}</div>
       ${rows}`}
     </div>`;
   }).join('');
@@ -514,33 +516,44 @@ function allCollapsed(){ const secs=sectionList(activeProject()); return secs.le
 function toggleAllCollapse(){ const p=activeProject(); if(allCollapsed()){ state.collapsed={}; } else { sectionList(p).forEach(s=>state.collapsed[s.id]=true); } saveCollapsed(); render(); }
 function saveCollapsed(){ try{ localStorage.setItem('la_collapsed', JSON.stringify(state.collapsed)); }catch(e){} }
 
-function taskRow(p,t){
+function taskRow(p,t,compact){
   const r=state.resolved[t.id]||{}; const chained=t.depMode==='afterPrev';
   const opts=companyList().map(c=>`<option value="${c.id}" ${c.id===t.companyId?'selected':''}>${esc(c.name)}</option>`).join('');
   const c=state.companies[t.companyId];
   const st=statusMeta(taskStatus(t)); const done=taskStatus(t)==='done'; const sel=!!state.sel[t.id];
-  return `<div class="trow ${sel?'selrow':''}">
-    <div class="flex items-center gap-1.5">
+  const lead=`<div class="flex items-center gap-1.5">
       <input type="checkbox" class="selbox" ${sel?'checked':''} onclick="toggleSel('${t.id}')" title="Select for bulk actions">
       <button class="statusdot" onclick="cycleStatus('${t.id}')" title="${st.label} — click to advance" style="color:${st.color}"><span class="ms text-[19px]">${st.icon}</span></button>
-    </div>
-    <input class="fld" value="${esc(t.name)}" style="${done?'text-decoration:line-through;opacity:.55':''}" onchange="changeTaskField('${t.id}','name',this.value)">
-    <input class="fld mono text-center" type="number" min="1" value="${t.days}" title="Working days" onchange="changeTaskField('${t.id}','days',this.value)">
+    </div>`;
+  const nameI=`<input class="fld" value="${esc(t.name)}" style="${done?'text-decoration:line-through;opacity:.55':''}" onchange="changeTaskField('${t.id}','name',this.value)">`;
+  const daysI=`<input class="fld mono text-center" type="number" min="1" value="${t.days}" title="Working days" onchange="changeTaskField('${t.id}','days',this.value)">`;
+  const companyI=`<div class="flex items-center gap-1.5">
+      <span class="codot" style="background:${c?c.color:'#444'};color:${c?textOn(c.color):'#fff'}">${c?esc(c.letter):'?'}</span>
+      <select class="fld flex-1" style="border-color:transparent;background:transparent" onchange="changeTaskField('${t.id}','companyId',this.value)">${opts}</select>
+    </div>`;
+  const reorder=`<div class="flex flex-col items-center handle">
+        <button class="icobtn" style="width:16px;height:12px" title="Move up" onclick="moveTask('${t.id}',-1)"><span class="ms" style="font-size:13px">expand_less</span></button>
+        <button class="icobtn" style="width:16px;height:12px" title="Move down" onclick="moveTask('${t.id}',1)"><span class="ms" style="font-size:13px">expand_more</span></button>
+      </div>`;
+  if(compact){
+    return `<div class="trow ${sel?'selrow':''}">${lead}${nameI}${daysI}${companyI}
+      <div class="flex items-center gap-0.5 justify-end">
+        ${reorder}
+        <button class="icobtn" title="Edit dates / chain / pour" onclick="openTaskQuick('${t.id}')"><span class="ms text-[16px]">tune</span></button>
+        <button class="icobtn" title="Delete" onclick="delTask('${t.id}')"><span class="ms text-[16px]">close</span></button>
+      </div>
+    </div>`;
+  }
+  return `<div class="trow ${sel?'selrow':''}">${lead}${nameI}${daysI}
     ${chained
       ? `<div class="fld mono flex items-center" style="color:var(--on-var);opacity:.7" title="Auto from previous task">${esc(fmtMD(r.start))}</div>`
       : `<input class="fld mono" type="date" value="${esc(t.start||r.start||p.startDate)}" onchange="changeTaskField('${t.id}','start',this.value)">`}
     <div class="fld mono col-finish flex items-center" style="color:var(--on-var);opacity:.7">${esc(fmtMD(r.finish))}</div>
     <button class="icobtn" title="${chained?'Chained to previous task — click for a fixed date':'Fixed date — click to chain to previous'}" onclick="toggleDep('${t.id}')" style="${chained?'color:var(--primary)':''}">
       <span class="ms text-[18px]">${chained?'link':'push_pin'}</span></button>
-    <div class="flex items-center gap-1.5">
-      <span class="codot" style="background:${c?c.color:'#444'};color:${c?textOn(c.color):'#fff'}">${c?esc(c.letter):'?'}</span>
-      <select class="fld flex-1" style="border-color:transparent;background:transparent" onchange="changeTaskField('${t.id}','companyId',this.value)">${opts}</select>
-    </div>
+    ${companyI}
     <div class="flex items-center gap-0.5 justify-end">
-      <div class="flex flex-col items-center handle">
-        <button class="icobtn" style="width:16px;height:12px" title="Move up" onclick="moveTask('${t.id}',-1)"><span class="ms" style="font-size:13px">expand_less</span></button>
-        <button class="icobtn" style="width:16px;height:12px" title="Move down" onclick="moveTask('${t.id}',1)"><span class="ms" style="font-size:13px">expand_more</span></button>
-      </div>
+      ${reorder}
       <button class="icobtn" title="Link Cup pour" onclick="openPourLink('${t.id}')" style="${t.linkedPourId?'color:var(--blue)':''}"><span class="ms text-[16px]">${t.linkedPourId?'link':'add_link'}</span></button>
       <button class="icobtn" title="Duplicate" onclick="dupTask('${t.id}')"><span class="ms text-[16px]">content_copy</span></button>
       <button class="icobtn" title="Delete" onclick="delTask('${t.id}')"><span class="ms text-[16px]">close</span></button>
@@ -631,7 +644,7 @@ function ganttPanel(p){
     </div>
     <div class="flex items-center flex-wrap gap-y-1 mb-1">${legend}</div>
     <div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">touch_app</span> Click a day cell to add or remove days for that task.${state.gFit?' Fit is on — toggle off to see letters.':''}</div>
-    <div class="scroll" id="ganttScroll" style="max-height:${state.gFull?'calc(100vh - 150px)':'62vh'}; ${state.gFit?'overflow-x:hidden':''}">
+    <div class="scroll" id="ganttScroll" style="max-height:${state.gFull?'calc(100vh - 150px)':(state.view==='build'&&state.buildLayout==='split'?'calc(100vh - 175px)':'62vh')}; ${state.gFit?'overflow-x:hidden':''}">
       <table class="gantt ${state.gFit?'fit':''}" data-days="${days.length}" style="--dayw:${cellW}px">
         <thead>
           <tr><th class="lab tname" style="background:#0f1722" rowspan="2">Task</th><th class="lab" style="background:#0f1722" rowspan="2">Start</th><th class="lab" style="background:#0f1722" rowspan="2">Finish</th><th class="lab" style="background:#0f1722" rowspan="2">Days</th><th class="lab" style="background:#0f1722" rowspan="2">Co.</th>${monthRow}</tr>
@@ -690,10 +703,14 @@ function openTaskQuick(tid){
       <button class="icobtn" onclick="changeTaskField('${tid}','days',${(t.days||1)+1}); openTaskQuick('${tid}')"><span class="ms">add</span></button>
       <select class="fld flex-1" onchange="changeTaskField('${tid}','companyId',this.value); openTaskQuick('${tid}')">${opts}</select>
     </div>
-    <div class="flex items-center gap-2 mb-3 text-xs text-white/50">
+    <div class="flex items-center gap-2 mb-3">
       <button class="btn btn-ghost btn-sm" onclick="toggleDep('${tid}'); openTaskQuick('${tid}')"><span class="ms text-[15px]">${chained?'link':'push_pin'}</span>${chained?'Chained':'Fixed date'}</button>
-      <span class="mono">${esc(fmtMD(r.start))}–${esc(fmtMD(r.finish))}</span>
+      ${chained
+        ? `<span class="mono text-xs text-white/50">starts ${esc(fmtMD(r.start))}</span>`
+        : `<input class="fld mono" type="date" value="${esc(t.start||r.start||p.startDate)}" onchange="changeTaskField('${tid}','start',this.value); openTaskQuick('${tid}')">`}
+      <span class="mono text-xs text-white/45 ml-auto">→ ${esc(fmtMD(r.finish))}</span>
     </div>
+    <button class="btn btn-ghost btn-sm w-full justify-center mb-3" onclick="closeModal(); openPourLink('${tid}')"><span class="ms text-[16px]">${t.linkedPourId?'link':'add_link'}</span>${t.linkedPourId?'Cup pour linked — change':'Link Cup pour'}</button>
     <div class="flex gap-1 mb-3">${stBtns}</div>
     <div class="flex justify-between"><button class="btn btn-ghost btn-sm" onclick="delTask('${tid}'); closeModal()"><span class="ms text-[16px]">delete</span>Delete</button><button class="btn btn-green" onclick="closeModal()">Done</button></div>
   </div></div>`;

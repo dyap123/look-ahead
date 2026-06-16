@@ -74,15 +74,18 @@
   .gantt .c-task,.gantt .c-start,.gantt .c-finish,.gantt .c-days,.gantt .c-co{ position:sticky; z-index:3; background:#0f1722; }
   /* sticky top header (2 rows) + sticky section bands so the titles follow vertical scroll */
   .gantt thead th{ position:sticky; background:#0f1722; }
-  .gantt thead tr:first-child th{ top:0; z-index:5; }
+  .gantt thead .m-head{ top:0; z-index:5; height:22px; }
   .gantt thead tr:last-child th{ top:22px; z-index:5; }
-  .gantt .m-head{ height:22px; }
-  .gantt thead .c-task,.gantt thead .c-start,.gantt thead .c-finish,.gantt thead .c-days,.gantt thead .c-co{ top:0; z-index:8; }
-  .gantt .c-task{ left:0; width:156px; min-width:156px; max-width:156px; overflow:hidden; text-overflow:ellipsis; }
-  .gantt .c-start{ left:156px; width:50px; min-width:50px; max-width:50px; }
-  .gantt .c-finish{ left:206px; width:50px; min-width:50px; max-width:50px; }
-  .gantt .c-days{ left:256px; width:36px; min-width:36px; max-width:36px; }
-  .gantt .c-co{ left:292px; width:50px; min-width:50px; max-width:50px; }
+  .gantt thead .c-task,.gantt thead .c-start,.gantt thead .c-finish,.gantt thead .c-days,.gantt thead .c-co{ top:0; z-index:9; }
+  .gantt .c-task{ left:0; width:var(--gw-task,156px); min-width:var(--gw-task,156px); max-width:var(--gw-task,156px); overflow:hidden; text-overflow:ellipsis; }
+  .gantt .c-start{ left:var(--gw-task,156px); width:50px; min-width:50px; max-width:50px; }
+  .gantt .c-finish{ left:calc(var(--gw-task,156px) + 50px); width:50px; min-width:50px; max-width:50px; }
+  .gantt .c-days{ left:calc(var(--gw-task,156px) + 100px); width:36px; min-width:36px; max-width:36px; }
+  .gantt .c-co{ left:calc(var(--gw-task,156px) + 136px); width:50px; min-width:50px; max-width:50px; }
+  .gantt th.c-task{ position:sticky; }
+  .colresize{ position:absolute; top:0; right:-4px; width:9px; height:100%; cursor:col-resize; z-index:9; }
+  .colresize::after{ content:''; position:absolute; top:0; right:4px; width:2px; height:100%; background:transparent; }
+  .colresize:hover::after, .colresize.dragging::after{ background:var(--blue); }
   .gantt thead th{ background:#0f1722; }
   .gantt .wknd{ background:rgba(137,148,130,.12); }
   .gantt .hol{ background:rgba(255,180,171,.14); }
@@ -140,6 +143,7 @@ const state = {
   companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
   resolved: {}, online: false, showPreview: true, seeded: false, collapsed: {}, lastTask: null,
   view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company', gFull: false, gFit: false, buildLayout: 'split',
+  ganttNameW: (parseInt(localStorage.getItem('la_gnameW'))||156),
   tools: { assets:{}, config:{}, loaded:false, q:'', status:'all', tab:'dash', groupBy:'category' },
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
   infoflow: { ann:{}, docs:{}, facts:{}, config:{}, loaded:false, loading:false, subject:null, unlocked:(localStorage.getItem('la_if_unlocked')==='1') },
@@ -643,9 +647,9 @@ function ganttPanel(p){
     <div class="flex items-center flex-wrap gap-y-1 mb-1">${legend}</div>
     <div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">touch_app</span> Click a day cell to add or remove days for that task.${state.gFit?' Fit is on — toggle off to see letters.':''}</div>
     <div class="scroll" id="ganttScroll" style="max-height:${state.gFull?'calc(100vh - 150px)':(state.view==='build'&&state.buildLayout==='split'?'calc(100vh - 175px)':'62vh')}; ${state.gFit?'overflow-x:hidden':''}">
-      <table class="gantt ${state.gFit?'fit':''}" data-days="${days.length}" style="--dayw:${cellW}px">
+      <table class="gantt ${state.gFit?'fit':''}" data-days="${days.length}" style="--dayw:${cellW}px; --gw-task:${state.ganttNameW||156}px">
         <thead>
-          <tr><th class="lab c-task" rowspan="2">Task</th><th class="lab c-start" rowspan="2">Start</th><th class="lab c-finish" rowspan="2">Finish</th><th class="lab c-days" rowspan="2">Days</th><th class="lab c-co" rowspan="2">Co.</th>${monthRow}</tr>
+          <tr><th class="lab c-task" rowspan="2">Task<div class="colresize" title="Drag to resize the task column" onmousedown="startColResize(event)" ontouchstart="startColResize(event)"></div></th><th class="lab c-start" rowspan="2">Start</th><th class="lab c-finish" rowspan="2">Finish</th><th class="lab c-days" rowspan="2">Days</th><th class="lab c-co" rowspan="2">Co.</th>${monthRow}</tr>
           <tr>${dayHead}</tr>
         </thead>
         <tbody>${body}</tbody>
@@ -654,6 +658,22 @@ function ganttPanel(p){
   </div>`;
 }
 function toggleGanttFull(){ state.gFull=!state.gFull; render(); afterRender(); }
+function startColResize(e){
+  e.preventDefault(); e.stopPropagation();
+  const handle=e.currentTarget; handle&&handle.classList.add('dragging');
+  const startX=(e.touches?e.touches[0].clientX:e.clientX);
+  const startW=state.ganttNameW||156;
+  const tbl=document.querySelector('table.gantt');
+  function move(ev){ const x=(ev.touches?ev.touches[0].clientX:ev.clientX); const w=Math.max(80, Math.min(440, Math.round(startW+(x-startX)))); state.ganttNameW=w; if(tbl) tbl.style.setProperty('--gw-task', w+'px'); if(ev.cancelable) ev.preventDefault(); }
+  function up(){ handle&&handle.classList.remove('dragging');
+    document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up);
+    document.removeEventListener('touchmove',move); document.removeEventListener('touchend',up);
+    try{ localStorage.setItem('la_gnameW', String(state.ganttNameW)); }catch(e){}
+    if(state.gFit) fitGantt();
+  }
+  document.addEventListener('mousemove',move); document.addEventListener('mouseup',up);
+  document.addEventListener('touchmove',move,{passive:false}); document.addEventListener('touchend',up);
+}
 function fitGantt(){
   if(!state.gFit) return;
   const sc=document.getElementById('ganttScroll'); if(!sc) return;

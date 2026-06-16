@@ -72,7 +72,12 @@
   .gantt .lab{ padding:4px 8px; white-space:nowrap; }
   /* freeze the 5 left label columns so the titles follow horizontal scroll */
   .gantt .c-task,.gantt .c-start,.gantt .c-finish,.gantt .c-days,.gantt .c-co{ position:sticky; z-index:3; background:#0f1722; }
-  .gantt thead .c-task,.gantt thead .c-start,.gantt thead .c-finish,.gantt thead .c-days,.gantt thead .c-co{ z-index:6; }
+  /* sticky top header (2 rows) + sticky section bands so the titles follow vertical scroll */
+  .gantt thead th{ position:sticky; background:#0f1722; }
+  .gantt thead tr:first-child th{ top:0; z-index:5; }
+  .gantt thead tr:last-child th{ top:22px; z-index:5; }
+  .gantt .m-head{ height:22px; }
+  .gantt thead .c-task,.gantt thead .c-start,.gantt thead .c-finish,.gantt thead .c-days,.gantt thead .c-co{ top:0; z-index:8; }
   .gantt .c-task{ left:0; width:156px; min-width:156px; max-width:156px; overflow:hidden; text-overflow:ellipsis; }
   .gantt .c-start{ left:156px; width:50px; min-width:50px; max-width:50px; }
   .gantt .c-finish{ left:206px; width:50px; min-width:50px; max-width:50px; }
@@ -81,7 +86,7 @@
   .gantt thead th{ background:#0f1722; }
   .gantt .wknd{ background:rgba(137,148,130,.12); }
   .gantt .hol{ background:rgba(255,180,171,.14); }
-  .gantt .secband td{ background:#16243a; color:#dbe1ff; font-weight:700; padding:5px 10px; position:sticky; left:0; z-index:4; border-left:3px solid var(--blue-c); }
+  .gantt .secband td{ background:#16243a; color:#dbe1ff; font-weight:700; padding:5px 10px; position:sticky; left:0; top:48px; z-index:4; border-left:3px solid var(--blue-c); }
   .gantt .today{ box-shadow:inset 2px 0 0 var(--blue); }
   .gantt td.gcell{ cursor:pointer; }
   .gantt td.gcell:hover{ outline:2px solid var(--blue); outline-offset:-2px; }
@@ -586,7 +591,7 @@ function ganttPanel(p){
   const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const DW=['S','M','T','W','T','F','S'];
   let monthRow=''; let i=0;
-  while(i<days.length){ const m=days[i].slice(0,7); let span=0; while(i+span<days.length && days[i+span].slice(0,7)===m) span++; const d=parseYMD(days[i]); monthRow+=`<th class="lab text-left" colspan="${span}" style="background:#0f1722">${MON[d.getMonth()]} ${d.getFullYear()}</th>`; i+=span; }
+  while(i<days.length){ const m=days[i].slice(0,7); let span=0; while(i+span<days.length && days[i+span].slice(0,7)===m) span++; const d=parseYMD(days[i]); monthRow+=`<th class="lab m-head text-left" colspan="${span}" style="background:#0f1722">${MON[d.getMonth()]} ${d.getFullYear()}</th>`; i+=span; }
   const dayHead=days.map(d=>{ const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':''; return `<th class="day ${cl}" ${d===today?'id="todayCol"':''}><div class="text-white/40 text-[9px]">${DW[dow(d)]}</div>${Number(d.slice(8))}</th>`; }).join('');
   const legend = byStatus
     ? STATUS.map(s=>`<span class="chip" style="background:${s.color};color:${textOn(s.color)}">&nbsp;</span><span class="text-xs text-white/60 mr-3">${s.label}</span>`).join('')

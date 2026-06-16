@@ -1442,7 +1442,7 @@ function ifLock(){ state.infoflow.unlocked=false; localStorage.removeItem('la_if
 function addTopic(){ if(!requireUnlock()) return; const t=(prompt('New subject (e.g. Elevator Coordination, Mix Designs, Submittals, Permits):')||'').trim(); if(!t) return; const ts=ifTopics().slice(); if(!ts.includes(t)){ ts.push(t); fb.set('infoflow/config/topics', ts); } state.infoflow.subject=t; render(); toast('Subject added'); }
 function infoflowView(){
   if(!state.online) return shellMsg('campaign','Offline','Connect to view Info Flow.');
-  if(!state.infoflow.loaded) return shellMsg('campaign','Loading Info Flow…','Fetching announcements and documents.');
+  if(!state.infoflow.loaded) return shellMsg('campaign','Loading Info Flow…','Fetching information and documents.');
   const u=state.infoflow.unlocked;
   const lockBtn = u
     ? `<button class="btn btn-ghost btn-sm" onclick="ifLock()" title="Lock posting on this device"><span class="ms text-[16px]" style="color:var(--primary)">lock_open</span>Unlocked · Lock</button>`
@@ -1468,7 +1468,7 @@ function infoSubjectsView(u, lockBtn){
   const cards=subs.map(name=>{ const c=subjectCounts(name);
     return `<div class="card p-4 cursor-pointer" onclick="openSubject(this.dataset.s)" data-s="${esc(name)}">
       <div class="flex items-center gap-2 mb-2"><span class="ms text-[24px]" style="color:var(--primary)">${subjIcon(name)}</span><div class="display font-semibold text-base flex-1 truncate">${esc(name)}</div><span class="ms text-white/25">chevron_right</span></div>
-      <div class="text-xs text-white/55">${c.ann} update${c.ann===1?'':'s'} · ${c.docs} doc${c.docs===1?'':'s'} · ${c.facts} fact${c.facts===1?'':'s'}</div>
+      <div class="text-xs text-white/55">${c.ann} post${c.ann===1?'':'s'} · ${c.docs} doc${c.docs===1?'':'s'} · ${c.facts} fact${c.facts===1?'':'s'}</div>
       <div class="text-xs text-white/30 mt-1">${c.last?'Updated '+relTime(c.last):'No updates yet'}</div>
     </div>`;
   }).join('');
@@ -1492,7 +1492,7 @@ function infoSubjectDetail(subject, u, lockBtn){
          <button class="icobtn" title="Delete subject" onclick="delSubject(this.dataset.s)" data-s="${esc(subject)}"><span class="ms text-[16px]">delete</span></button>`:''}
       <div class="ml-auto">${lockBtn}</div>
     </div>
-    <div class="lcaps mb-2 flex items-center gap-2"><span class="ms text-[15px]" style="color:var(--primary)">feed</span>Updates</div>
+    <div class="lcaps mb-2 flex items-center gap-2"><span class="ms text-[15px]" style="color:var(--primary)">article</span>Information</div>
     ${ifAnnView()}
     <div class="lcaps mb-2 mt-5 flex items-center gap-2"><span class="ms text-[15px]" style="color:var(--primary)">description</span>Documents</div>
     ${ifDocsView()}
@@ -1532,8 +1532,8 @@ function ifAnnView(){
       ${(docChips||linkChip)?`<div class="flex items-center gap-1.5 flex-wrap mb-1">${docChips}${linkChip}</div>`:''}
       <div class="text-xs text-white/35 mt-1">${esc(a.author||'Super')} · ${relTime(a.postedAt)}</div>
     </div>`;
-  }).join('') || `<div class="card p-8 text-center text-white/40">No announcements yet.${u?' Click “Post announcement”.':' Unlock to post the first one.'}</div>`;
-  return `${u?`<button class="btn btn-green mb-3" onclick="openAnn()"><span class="ms">add_circle</span>Post announcement</button>`:''}${cards}`;
+  }).join('') || `<div class="card p-8 text-center text-white/40">No information posted yet.${u?' Click “Post information”.':' Unlock to post the first item.'}</div>`;
+  return `${u?`<button class="btn btn-green mb-3" onclick="openAnn()"><span class="ms">add_circle</span>Post information</button>`:''}${cards}`;
 }
 function openAnn(id){
   if(!requireUnlock()) return;
@@ -1541,7 +1541,7 @@ function openAnn(id){
   const topicOpts=ifTopics().map(t=>`<option ${t===a.topic?'selected':''}>${esc(t)}</option>`).join('');
   const docOpts=Object.entries(state.infoflow.docs||{}).map(([did,d])=>`<label class="flex items-center gap-2 text-sm py-0.5"><input type="checkbox" value="${did}" ${(a.docIds||[]).includes(did)?'checked':''} class="ifDoc"> ${esc(d.title)}</label>`).join('') || '<div class="text-xs text-white/40">No documents yet — add some in the Documents tab.</div>';
   $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-5 w-full max-w-lg">
-    <div class="display font-semibold text-lg mb-3">${id?'Edit':'Post'} announcement</div>
+    <div class="display font-semibold text-lg mb-3">${id?'Edit':'Post'} information</div>
     <input id="annTitle" class="fld w-full mb-2" placeholder="Title (e.g. Elevator embed delivery update)" value="${esc(a.title)}">
     <textarea id="annBody" class="fld w-full mb-2" rows="4" placeholder="Message…">${esc(a.body||'')}</textarea>
     <div class="flex items-center gap-2 mb-2 flex-wrap">
@@ -1560,7 +1560,7 @@ function saveAnn(id){
   const rec={ title, body:document.getElementById('annBody').value, topic:document.getElementById('annTopic').value, pinned:document.getElementById('annPin').checked, link:document.getElementById('annLink').value.trim()||null, docIds, author:'Super', postedAt:(id&&state.infoflow.ann[id]&&state.infoflow.ann[id].postedAt)||new Date().toISOString() };
   fb.set('infoflow/ann/'+(id||uid('an_')), rec); closeModal(); toast(id?'Updated':'Posted');
 }
-function delAnn(id){ if(!confirm('Delete this announcement?')) return; fb.remove('infoflow/ann/'+id); toast('Deleted'); }
+function delAnn(id){ if(!confirm('Delete this post?')) return; fb.remove('infoflow/ann/'+id); toast('Deleted'); }
 function ifDocsView(){
   const u=state.infoflow.unlocked;
   const list=ifFilter(state.infoflow.docs).sort((a,b)=>String(b.addedAt||'').localeCompare(String(a.addedAt||'')));

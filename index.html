@@ -118,8 +118,9 @@ const state = {
   companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
   resolved: {}, online: false, showPreview: true, seeded: false, collapsed: {},
   view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company',
-  tools: { assets:{}, config:{}, loaded:false, q:'', status:'all', tab:'dash' },
+  tools: { assets:{}, config:{}, loaded:false, q:'', status:'all', tab:'dash', groupBy:'category' },
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
+  infoflow: { ann:{}, docs:{}, facts:{}, config:{}, loaded:false, loading:false, tab:'ann', topic:'all', unlocked:(localStorage.getItem('la_if_unlocked')==='1') },
 };
 
 /* ============================================================ HELPERS */
@@ -324,6 +325,7 @@ async function seedIfNeeded(){
   if(!await fb.get('holidays')) await fb.set('holidays', state.holidays);
   const projs=await fb.get('projects');
   if(!projs){ ensureActive(); await fb.set('projects/'+activeId(), activeProject()); await fb.set('meta', state.meta); }
+  if(!await fb.get('infoflow/config')) await fb.set('infoflow/config', { topics:['Elevators','General'] });
 }
 function attachListeners(){
   fb.listen('companies', v=>{ if(v){ state.companies=v; saveLocal(); render(); } });
@@ -392,11 +394,12 @@ function render(){
   let view;
   if(state.nav==='attendance') view=attendanceView();
   else if(state.nav==='tools') view=toolsView();
+  else if(state.nav==='infoflow') view=infoflowView();
   else view=builderView(p);
   $('#app').innerHTML = header() + view;
   if(typeof afterRender==='function') afterRender();
 }
-function setNav(id){ state.nav=id; render(); if(id==='attendance') ensureAttendance(); if(id==='tools') ensureTools(); }
+function setNav(id){ state.nav=id; render(); if(id==='attendance') ensureAttendance(); if(id==='tools') ensureTools(); if(id==='infoflow') ensureInfoflow(); }
 function header(){
   const p=activeProject();
   const projOpts=Object.entries(state.projects).map(([id,pr])=>`<option value="${id}" ${id===activeId()?'selected':''}>${esc(pr.name)}</option>`).join('');
@@ -410,6 +413,7 @@ function header(){
       </div>
       <div class="seg ml-1 flex-wrap">
         ${nav('schedule','Schedule','calendar_month')}
+        ${nav('infoflow','Info Flow','campaign')}
         ${nav('attendance','Attendance','how_to_reg')}
         ${nav('tools','Tools','handyman')}
       </div>
@@ -1274,6 +1278,15 @@ function ensureTools(){
   db.ref('tool-tracker/assets').on('value', s=>{ state.tools.assets=s.val()||{}; state.tools.loaded=true; if(state.nav==='tools') render(); });
   db.ref('tool-tracker/config').on('value', s=>{ state.tools.config=s.val()||{}; if(state.nav==='tools') render(); });
 }
+function ensureInfoflow(){
+  if(state.infoflow.loaded || state.infoflow.loading) return;
+  if(!db){ render(); return; }
+  state.infoflow.loading=true;
+  fb.listen('infoflow/config', v=>{ state.infoflow.config=v||{}; state.infoflow.loaded=true; if(state.nav==='infoflow') render(); });
+  fb.listen('infoflow/ann',    v=>{ state.infoflow.ann=v||{};   if(state.nav==='infoflow') render(); });
+  fb.listen('infoflow/docs',   v=>{ state.infoflow.docs=v||{};  if(state.nav==='infoflow') render(); });
+  fb.listen('infoflow/facts',  v=>{ state.infoflow.facts=v||{}; if(state.nav==='infoflow') render(); });
+}
 function toolsList(){
   const q=(state.tools.q||'').toLowerCase(); const sf=state.tools.status;
   return Object.entries(state.tools.assets||{}).map(([k,a])=>({k,...a}))
@@ -1344,9 +1357,20 @@ function toolCategory(a){
   let base=d.split(/\s*[-–—]\s*/)[0].trim() || d;        // text before the first dash
   return base.split(/\s+/).slice(0,2).join(' ').toUpperCase(); // first 1–2 words
 }
+const TOOL_BRANDS=['DEWALT','MILWAUKEE','MAKITA','HILTI','BOSCH','RIDGID','METABO','RYOBI','KNAACK','GREENLEE','STIHL','HUSQVARNA','WACKER','HONDA','GENERAC','FLUKE','LEICA','TOPCON','TRIMBLE','SPECTRA','MULTIQUIP','WAGNER','STANLEY','KLEIN','WERNER','PACO'];
+function toolBrand(a){
+  const d=(a.description||'').toUpperCase();
+  for(const b of TOOL_BRANDS){ if(d.includes(b)) return b; }
+  return 'OTHER';   // unrecognized brand → OTHER (no noisy guessing)
+}
+function toolGroup(a){ return state.tools.groupBy==='brand' ? toolBrand(a) : toolCategory(a); }
 function toolsDashSection(all){
-  const cat={}; all.forEach(a=>{ const k=toolCategory(a); cat[k]=cat[k]||{n:0,onsite:0,monthly:0}; cat[k].n++; if(a.status==='On Site'){ cat[k].onsite++; cat[k].monthly+=(Number(a.unit_cost)||0)*(Number(a.qty)||1); } });
+  const byBrand=state.tools.groupBy==='brand'; const label=byBrand?'Brand':'Category';
+  const cat={}; all.forEach(a=>{ const k=toolGroup(a); cat[k]=cat[k]||{n:0,onsite:0,monthly:0}; cat[k].n++; if(a.status==='On Site'){ cat[k].onsite++; cat[k].monthly+=(Number(a.unit_cost)||0)*(Number(a.qty)||1); } });
   const cats=Object.entries(cat).sort((a,b)=>b[1].n-a[1].n);
+  const groupToggle=`<div class="seg ml-auto">
+    <div class="tabbtn ${!byBrand?'on':''}" onclick="state.tools.groupBy='category'; render(); afterRender()">Category</div>
+    <div class="tabbtn ${byBrand?'on':''}" onclick="state.tools.groupBy='brand'; render(); afterRender()">Brand</div></div>`;
   const catCards=cats.map(([k,v])=>`<div class="card p-3 cursor-pointer" onclick="state.tools.tab='list'; state.tools.q='${esc(k).replace(/'/g,'')}'; render()" title="View ${esc(k)} in inventory">
     <div class="lcaps mb-1 truncate" style="font-size:10px">${esc(k)}</div>
     <div class="display font-bold text-xl">${v.n}</div>
@@ -1358,7 +1382,7 @@ function toolsDashSection(all){
   const verified=all.filter(a=>a.verified==='Yes').length, missing=all.filter(a=>a.verified==='Missing').length;
   return `
     <div class="grid md:grid-cols-2 gap-3 mb-3">
-      <div class="card p-3"><div class="lcaps mb-2">Top categories</div><div style="height:250px"><canvas id="toolsCatChart"></canvas></div></div>
+      <div class="card p-3"><div class="flex items-center mb-2"><div class="lcaps">Top ${label.toLowerCase()}s</div>${groupToggle}</div><div style="height:250px"><canvas id="toolsCatChart"></canvas></div></div>
       <div class="card p-3"><div class="lcaps mb-2">By status</div><div style="height:250px"><canvas id="toolsStatusChart"></canvas></div></div>
     </div>
     <div class="flex gap-2 mb-4 flex-wrap items-center">
@@ -1366,12 +1390,12 @@ function toolsDashSection(all){
       <div class="card px-3 py-2"><div class="display font-bold text-lg" style="color:var(--blue)">${verified}</div><div class="lcaps" style="font-size:9px">Verified</div></div>
       <div class="card px-3 py-2"><div class="display font-bold text-lg" style="color:var(--error)">${missing}</div><div class="lcaps" style="font-size:9px">Missing</div></div>
     </div>
-    <div class="lcaps mb-2">Categories <span class="text-white/30">— tap to filter the inventory</span></div>
+    <div class="lcaps mb-2">${label==='Brand'?'Brands':'Categories'} <span class="text-white/30">— tap to filter the inventory</span></div>
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">${catCards}</div>`;
 }
 function drawToolsCharts(){
   const all=Object.values(state.tools.assets||{});
-  const cat={}; all.forEach(a=>{ const k=toolCategory(a); cat[k]=(cat[k]||0)+1; });
+  const cat={}; all.forEach(a=>{ const k=toolGroup(a); cat[k]=(cat[k]||0)+1; });
   const top=Object.entries(cat).sort((a,b)=>b[1]-a[1]).slice(0,8);
   drawChart('toolsCatChart',{ type:'bar',
     data:{ labels:top.map(x=>x[0]), datasets:[{ data:top.map(x=>x[1]), backgroundColor:'#2f80ed', borderRadius:4 }] },
@@ -1382,6 +1406,179 @@ function drawToolsCharts(){
     data:{ labels:STAT.map(x=>x[0]), datasets:[{ data:STAT.map(([s])=>all.filter(a=>a.status===s).length), backgroundColor:STAT.map(x=>x[1]), borderWidth:0 }] },
     options:{ responsive:true, maintainAspectRatio:false, cutout:'60%', plugins:{legend:{position:'bottom',labels:{color:'#dbe4ef',boxWidth:12,font:{size:11}}}} } });
 }
+
+/* ============================================================ INFO FLOW (look-ahead-schedule/infoflow/) */
+function ifTopics(){ return (state.infoflow.config&&state.infoflow.config.topics)||['General']; }
+function relTime(iso){ if(!iso) return ''; const t=new Date(iso); const s=(Date.now()-t.getTime())/1000;
+  if(s<60) return 'just now'; if(s<3600) return Math.floor(s/60)+'m ago'; if(s<86400) return Math.floor(s/3600)+'h ago';
+  if(s<604800) return Math.floor(s/86400)+'d ago'; return t.toLocaleDateString([],{month:'short',day:'numeric'}); }
+function requireUnlock(){
+  if(state.infoflow.unlocked) return true;
+  const cfg=state.infoflow.config||{};
+  if(!cfg.pin){ const np=prompt('Set a posting PIN for Info Flow (the team enters this to post/edit):'); if(!np) return false;
+    fb.set('infoflow/config/pin', String(np)); state.infoflow.config.pin=String(np); state.infoflow.unlocked=true; localStorage.setItem('la_if_unlocked','1'); render(); toast('PIN set — posting unlocked'); return true; }
+  const p=prompt('Enter the Info Flow posting PIN:'); if(p===null) return false;
+  if(String(p)===String(cfg.pin)){ state.infoflow.unlocked=true; localStorage.setItem('la_if_unlocked','1'); render(); toast('Unlocked'); return true; }
+  toast('Wrong PIN','err'); return false;
+}
+function ifLock(){ state.infoflow.unlocked=false; localStorage.removeItem('la_if_unlocked'); render(); }
+function addTopic(){ if(!requireUnlock()) return; const t=(prompt('New topic (e.g. Elevators, MEP, Concrete):')||'').trim(); if(!t) return; const ts=ifTopics().slice(); if(!ts.includes(t)){ ts.push(t); fb.set('infoflow/config/topics', ts); toast('Topic added'); } }
+function infoflowView(){
+  if(!state.online) return shellMsg('campaign','Offline','Connect to view Info Flow.');
+  if(!state.infoflow.loaded) return shellMsg('campaign','Loading Info Flow…','Fetching announcements and documents.');
+  const u=state.infoflow.unlocked; const tab=state.infoflow.tab;
+  const sub=(id,label,icon)=>`<div class="tabbtn flex items-center gap-1 ${tab===id?'on':''}" onclick="state.infoflow.tab='${id}'; render()"><span class="ms text-[16px]">${icon}</span><span class="hidden sm:inline">${label}</span></div>`;
+  const chips=['all',...ifTopics()].map(t=>{ const on=state.infoflow.topic===t;
+    return `<button class="chip" style="${on?'background:var(--primary);color:var(--on-primary)':'background:rgba(255,255,255,.06);color:var(--on-var)'}" data-t="${esc(t)}" onclick="state.infoflow.topic=this.dataset.t; render()">${t==='all'?'All':esc(t)}</button>`; }).join('');
+  const body = tab==='docs'? ifDocsView() : tab==='facts'? ifFactsView() : ifAnnView();
+  return `<div class="max-w-[1100px] mx-auto px-4 py-4">
+    <div class="flex items-center gap-2 mb-3 flex-wrap">
+      <div class="display font-bold text-lg flex items-center gap-2"><span class="ms" style="color:var(--primary)">campaign</span>Info Flow</div>
+      <div class="seg ml-1">${sub('ann','Announcements','feed')}${sub('docs','Documents','description')}${sub('facts','Quick Info','bolt')}</div>
+      <div class="ml-auto">${ u
+        ? `<button class="btn btn-ghost btn-sm" onclick="ifLock()" title="Lock posting on this device"><span class="ms text-[16px]" style="color:var(--primary)">lock_open</span>Unlocked · Lock</button>`
+        : `<button class="btn btn-ghost btn-sm" onclick="requireUnlock()"><span class="ms text-[16px]">lock</span>Unlock to post</button>` }</div>
+    </div>
+    <div class="flex items-center gap-1.5 mb-3 flex-wrap">
+      <span class="lcaps mr-1" style="font-size:10px">Topic</span>${chips}
+      ${u?`<button class="icobtn" title="Add topic" onclick="addTopic()"><span class="ms text-[16px]">add</span></button>`:''}
+    </div>
+    ${body}
+    <div class="text-xs text-white/30 mt-3">Central hub · everyone can view${u?' · you can post':' · unlock to post'}.</div>
+  </div>`;
+}
+function ifFilter(obj){ const tf=state.infoflow.topic; let list=Object.entries(obj||{}).map(([id,x])=>({id,...x})); if(tf!=='all') list=list.filter(x=>(x.topic||'General')===tf); return list; }
+function ifAnnView(){
+  const u=state.infoflow.unlocked;
+  const list=ifFilter(state.infoflow.ann).sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0) || String(b.postedAt||'').localeCompare(String(a.postedAt||'')));
+  const cards=list.map(a=>{
+    const docChips=(a.docIds||[]).map(did=>{ const d=state.infoflow.docs[did]; return d?`<button class="chip" style="background:rgba(47,128,237,.16);color:#9ec5ff" onclick="openDocView('${did}')"><span class="ms text-[13px]">${d.kind==='file'?'picture_as_pdf':'description'}</span>${esc(d.title)}</button>`:''; }).join('');
+    const linkChip=a.link?`<a class="chip" style="background:rgba(47,128,237,.16);color:#9ec5ff" href="${esc(a.link)}" target="_blank" rel="noopener"><span class="ms text-[13px]">open_in_new</span>Link</a>`:'';
+    return `<div class="card p-3 mb-2">
+      <div class="flex items-center gap-2 mb-1">
+        ${a.pinned?'<span class="ms text-[15px]" style="color:var(--primary)" title="Pinned">push_pin</span>':''}
+        <span class="chip" style="background:rgba(180,197,255,.14);color:var(--blue)">${esc(a.topic||'General')}</span>
+        <span class="display font-semibold flex-1">${esc(a.title)}</span>
+        ${u?`<button class="icobtn" title="Edit" onclick="openAnn('${a.id}')"><span class="ms text-[16px]">edit</span></button><button class="icobtn" title="Delete" onclick="delAnn('${a.id}')"><span class="ms text-[16px]">close</span></button>`:''}
+      </div>
+      ${a.body?`<div class="text-sm text-white/80 whitespace-pre-wrap mb-2">${esc(a.body)}</div>`:''}
+      ${(docChips||linkChip)?`<div class="flex items-center gap-1.5 flex-wrap mb-1">${docChips}${linkChip}</div>`:''}
+      <div class="text-xs text-white/35 mt-1">${esc(a.author||'Super')} · ${relTime(a.postedAt)}</div>
+    </div>`;
+  }).join('') || `<div class="card p-8 text-center text-white/40">No announcements yet.${u?' Click “Post announcement”.':' Unlock to post the first one.'}</div>`;
+  return `${u?`<button class="btn btn-green mb-3" onclick="openAnn()"><span class="ms">add_circle</span>Post announcement</button>`:''}${cards}`;
+}
+function openAnn(id){
+  if(!requireUnlock()) return;
+  const a=id?{...state.infoflow.ann[id]}:{ title:'',body:'',topic:(state.infoflow.topic!=='all'?state.infoflow.topic:ifTopics()[0]||'General'),pinned:false,docIds:[],link:'' };
+  const topicOpts=ifTopics().map(t=>`<option ${t===a.topic?'selected':''}>${esc(t)}</option>`).join('');
+  const docOpts=Object.entries(state.infoflow.docs||{}).map(([did,d])=>`<label class="flex items-center gap-2 text-sm py-0.5"><input type="checkbox" value="${did}" ${(a.docIds||[]).includes(did)?'checked':''} class="ifDoc"> ${esc(d.title)}</label>`).join('') || '<div class="text-xs text-white/40">No documents yet — add some in the Documents tab.</div>';
+  $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-5 w-full max-w-lg">
+    <div class="display font-semibold text-lg mb-3">${id?'Edit':'Post'} announcement</div>
+    <input id="annTitle" class="fld w-full mb-2" placeholder="Title (e.g. Elevator embed delivery update)" value="${esc(a.title)}">
+    <textarea id="annBody" class="fld w-full mb-2" rows="4" placeholder="Message…">${esc(a.body||'')}</textarea>
+    <div class="flex items-center gap-2 mb-2 flex-wrap">
+      <label class="text-xs text-white/50">Topic</label><select id="annTopic" class="fld">${topicOpts}</select>
+      <label class="flex items-center gap-1 text-xs text-white/60 ml-2"><input type="checkbox" id="annPin" ${a.pinned?'checked':''}> Pin to top</label>
+    </div>
+    <input id="annLink" class="fld w-full mb-2" placeholder="Optional link (Drive / BIM 360 URL)" value="${esc(a.link||'')}">
+    <div class="lcaps mb-1" style="font-size:10px">Attach documents</div>
+    <div class="max-h-32 overflow-auto mb-3">${docOpts}</div>
+    <div class="flex justify-end gap-2"><button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-green" onclick="saveAnn('${id||''}')">${id?'Save':'Post'}</button></div>
+  </div></div>`;
+}
+function saveAnn(id){
+  const title=document.getElementById('annTitle').value.trim(); if(!title) return toast('Add a title','warn');
+  const docIds=[...document.querySelectorAll('.ifDoc:checked')].map(c=>c.value);
+  const rec={ title, body:document.getElementById('annBody').value, topic:document.getElementById('annTopic').value, pinned:document.getElementById('annPin').checked, link:document.getElementById('annLink').value.trim()||null, docIds, author:'Super', postedAt:(id&&state.infoflow.ann[id]&&state.infoflow.ann[id].postedAt)||new Date().toISOString() };
+  fb.set('infoflow/ann/'+(id||uid('an_')), rec); closeModal(); toast(id?'Updated':'Posted');
+}
+function delAnn(id){ if(!confirm('Delete this announcement?')) return; fb.remove('infoflow/ann/'+id); toast('Deleted'); }
+function ifDocsView(){
+  const u=state.infoflow.unlocked;
+  const list=ifFilter(state.infoflow.docs).sort((a,b)=>String(b.addedAt||'').localeCompare(String(a.addedAt||'')));
+  const cards=list.map(d=>`<div class="card p-3 flex items-center gap-3">
+    <span class="ms text-[26px]" style="color:${d.kind==='file'?'var(--primary)':'#9ec5ff'}">${d.kind==='file'?'picture_as_pdf':'link'}</span>
+    <div class="flex-1 min-w-0"><div class="font-semibold truncate">${esc(d.title)}</div><div class="text-xs text-white/45 mt-0.5"><span class="chip" style="background:rgba(180,197,255,.14);color:var(--blue)">${esc(d.topic||'General')}</span> <span class="ml-1">${d.kind==='file'?Math.round((d.size||0)/1024)+' KB PDF':'external link'}</span></div></div>
+    <button class="btn btn-ghost btn-sm" onclick="openDocView('${d.id}')"><span class="ms text-[16px]">open_in_new</span>Open</button>
+    ${u?`<button class="icobtn" title="Delete" onclick="delDoc('${d.id}')"><span class="ms text-[16px]">close</span></button>`:''}
+  </div>`).join('') || `<div class="card p-8 text-center text-white/40">No documents yet.${u?' Click “Add document”.':' Unlock to add reference docs.'}</div>`;
+  return `${u?`<button class="btn btn-green mb-3" onclick="openDoc()"><span class="ms">upload_file</span>Add document</button>`:''}<div class="space-y-2">${cards}</div>`;
+}
+function openDoc(){
+  if(!requireUnlock()) return;
+  const cur=state.infoflow.topic!=='all'?state.infoflow.topic:'';
+  const topicOpts=ifTopics().map(t=>`<option ${t===cur?'selected':''}>${esc(t)}</option>`).join('');
+  $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-5 w-full max-w-md">
+    <div class="display font-semibold text-lg mb-3">Add document</div>
+    <input id="docTitle" class="fld w-full mb-2" placeholder="Title (e.g. Elevator shop drawings Rev C)">
+    <div class="flex items-center gap-2 mb-3"><label class="text-xs text-white/50">Topic</label><select id="docTopic" class="fld flex-1">${topicOpts}</select></div>
+    <div class="lcaps mb-1" style="font-size:10px">Option A — paste a link (any size)</div>
+    <div class="flex gap-2 mb-3"><input id="docUrl" class="fld flex-1" placeholder="https://drive.google.com/… or BIM 360 URL"><button class="btn btn-green" onclick="saveDocLink()">Add link</button></div>
+    <div class="lcaps mb-1" style="font-size:10px">Option B — upload a small PDF (≤2 MB)</div>
+    <input id="docFile" type="file" accept="application/pdf" class="fld w-full" onchange="handleDocFile(this.files[0])">
+    <div id="docMsg" class="text-xs text-white/45 mt-2">Big shop-drawing sets? Use a Drive/BIM 360 link instead.</div>
+    <div class="flex justify-end gap-2 mt-3"><button class="btn btn-ghost" onclick="closeModal()">Close</button></div>
+  </div></div>`;
+}
+function saveDocLink(){
+  const title=document.getElementById('docTitle').value.trim(); const url=document.getElementById('docUrl').value.trim();
+  if(!title) return toast('Add a title','warn'); if(!url) return toast('Paste a link','warn');
+  fb.set('infoflow/docs/'+uid('dc_'), { title, topic:document.getElementById('docTopic').value, kind:'link', url, addedAt:new Date().toISOString() }); closeModal(); toast('Document added');
+}
+function handleDocFile(file){
+  if(!file) return; const msg=document.getElementById('docMsg');
+  if(file.size>2*1024*1024){ msg.innerHTML='<span style="color:var(--error)">That PDF is over 2 MB — paste a Drive / BIM 360 link instead.</span>'; return; }
+  const title=document.getElementById('docTitle').value.trim()||file.name.replace(/\.[^.]+$/,'');
+  msg.textContent='Reading…';
+  const r=new FileReader();
+  r.onload=()=>{ fb.set('infoflow/docs/'+uid('dc_'), { title, topic:document.getElementById('docTopic').value, kind:'file', filename:file.name, size:file.size, data:r.result, addedAt:new Date().toISOString() }); closeModal(); toast('PDF uploaded'); };
+  r.onerror=()=>{ msg.innerHTML='<span style="color:var(--error)">Could not read that file.</span>'; };
+  r.readAsDataURL(file);
+}
+function openDocView(id){
+  const d=state.infoflow.docs[id]; if(!d) return;
+  if(d.kind==='link'){ window.open(d.url,'_blank','noopener'); return; }
+  try{
+    const b64=d.data.split(','); const bin=atob(b64[1]); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i);
+    const url=URL.createObjectURL(new Blob([arr],{type:'application/pdf'}));
+    $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-3 w-full" style="max-width:920px;height:88vh;display:flex;flex-direction:column">
+      <div class="flex items-center gap-2 mb-2"><span class="display font-semibold flex-1 truncate">${esc(d.title)}</span>
+        <a class="btn btn-ghost btn-sm" href="${url}" download="${esc(d.filename||'document.pdf')}"><span class="ms text-[16px]">download</span>Download</a>
+        <button class="btn btn-ghost btn-sm" onclick="closeModal()">Close</button></div>
+      <iframe src="${url}" style="flex:1;width:100%;border:0;border-radius:6px;background:#fff"></iframe></div></div>`;
+  }catch(e){ toast('Could not open PDF','err'); }
+}
+function delDoc(id){ if(!confirm('Delete this document?')) return; fb.remove('infoflow/docs/'+id); toast('Deleted'); }
+function ifFactsView(){
+  const u=state.infoflow.unlocked;
+  const list=ifFilter(state.infoflow.facts).sort((a,b)=>(a.order||0)-(b.order||0));
+  const rows=list.map(f=>`<div class="card p-3 flex items-center gap-3">
+    <div class="flex-1 min-w-0"><div class="lcaps" style="font-size:10px">${esc(f.label)}</div><div class="display font-bold text-lg truncate">${esc(f.value)}</div></div>
+    ${f.date?`<span class="chip mono" style="background:rgba(180,197,255,.14);color:var(--blue)"><span class="ms text-[13px]">event</span>${esc(fmtMD(f.date))}</span>`:''}
+    <span class="chip" style="background:rgba(255,255,255,.06);color:var(--on-var)">${esc(f.topic||'General')}</span>
+    ${u?`<button class="icobtn" title="Edit" onclick="openFact('${f.id}')"><span class="ms text-[16px]">edit</span></button><button class="icobtn" title="Delete" onclick="delFact('${f.id}')"><span class="ms text-[16px]">close</span></button>`:''}
+  </div>`).join('') || `<div class="card p-8 text-center text-white/40">No quick info yet.${u?' Add dimensions, embed delivery dates, etc.':' Unlock to add quick reference facts.'}</div>`;
+  return `${u?`<button class="btn btn-green mb-3" onclick="openFact()"><span class="ms">add_circle</span>Add quick info</button>`:''}<div class="space-y-2">${rows}</div>`;
+}
+function openFact(id){
+  if(!requireUnlock()) return;
+  const f=id?{...state.infoflow.facts[id]}:{ label:'',value:'',date:'',topic:(state.infoflow.topic!=='all'?state.infoflow.topic:ifTopics()[0]||'General') };
+  const topicOpts=ifTopics().map(t=>`<option ${t===f.topic?'selected':''}>${esc(t)}</option>`).join('');
+  $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-5 w-full max-w-md">
+    <div class="display font-semibold text-lg mb-3">${id?'Edit':'Add'} quick info</div>
+    <input id="fLabel" class="fld w-full mb-2" placeholder="Label (e.g. Elevator pit depth, Embed AR-12 delivery)" value="${esc(f.label)}">
+    <input id="fValue" class="fld w-full mb-2" placeholder="Value (e.g. 5'-6&quot;, or Delivered)" value="${esc(f.value)}">
+    <div class="flex items-center gap-2 mb-3 flex-wrap"><label class="text-xs text-white/50">Date</label><input id="fDate" type="date" class="fld" value="${esc(f.date||'')}"><label class="text-xs text-white/50 ml-2">Topic</label><select id="fTopic" class="fld flex-1">${topicOpts}</select></div>
+    <div class="flex justify-end gap-2"><button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-green" onclick="saveFact('${id||''}')">${id?'Save':'Add'}</button></div>
+  </div></div>`;
+}
+function saveFact(id){
+  const label=document.getElementById('fLabel').value.trim(); if(!label) return toast('Add a label','warn');
+  const rec={ label, value:document.getElementById('fValue').value, date:document.getElementById('fDate').value||null, topic:document.getElementById('fTopic').value, order:(id&&state.infoflow.facts[id]&&state.infoflow.facts[id].order)||Object.keys(state.infoflow.facts||{}).length };
+  fb.set('infoflow/facts/'+(id||uid('ft_')), rec); closeModal(); toast(id?'Updated':'Added');
+}
+function delFact(id){ if(!confirm('Delete this item?')) return; fb.remove('infoflow/facts/'+id); toast('Deleted'); }
 
 /* small shared UI bits */
 function statCard(label, val, icon, accent){

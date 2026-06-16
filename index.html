@@ -120,7 +120,7 @@ const state = {
   view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company',
   tools: { assets:{}, config:{}, loaded:false, q:'', status:'all', tab:'dash', groupBy:'category' },
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
-  infoflow: { ann:{}, docs:{}, facts:{}, config:{}, loaded:false, loading:false, tab:'ann', topic:'all', unlocked:(localStorage.getItem('la_if_unlocked')==='1') },
+  infoflow: { ann:{}, docs:{}, facts:{}, config:{}, loaded:false, loading:false, subject:null, unlocked:(localStorage.getItem('la_if_unlocked')==='1') },
 };
 
 /* ============================================================ HELPERS */
@@ -325,7 +325,7 @@ async function seedIfNeeded(){
   if(!await fb.get('holidays')) await fb.set('holidays', state.holidays);
   const projs=await fb.get('projects');
   if(!projs){ ensureActive(); await fb.set('projects/'+activeId(), activeProject()); await fb.set('meta', state.meta); }
-  if(!await fb.get('infoflow/config')) await fb.set('infoflow/config', { topics:['Elevators','General'] });
+  if(!await fb.get('infoflow/config')) await fb.set('infoflow/config', { topics:['Elevator Coordination','Mix Designs','Submittals','Permits','General'] });
 }
 function attachListeners(){
   fb.listen('companies', v=>{ if(v){ state.companies=v; saveLocal(); render(); } });
@@ -1422,32 +1422,82 @@ function requireUnlock(){
   toast('Wrong PIN','err'); return false;
 }
 function ifLock(){ state.infoflow.unlocked=false; localStorage.removeItem('la_if_unlocked'); render(); }
-function addTopic(){ if(!requireUnlock()) return; const t=(prompt('New topic (e.g. Elevators, MEP, Concrete):')||'').trim(); if(!t) return; const ts=ifTopics().slice(); if(!ts.includes(t)){ ts.push(t); fb.set('infoflow/config/topics', ts); toast('Topic added'); } }
+function addTopic(){ if(!requireUnlock()) return; const t=(prompt('New subject (e.g. Elevator Coordination, Mix Designs, Submittals, Permits):')||'').trim(); if(!t) return; const ts=ifTopics().slice(); if(!ts.includes(t)){ ts.push(t); fb.set('infoflow/config/topics', ts); } state.infoflow.subject=t; render(); toast('Subject added'); }
 function infoflowView(){
   if(!state.online) return shellMsg('campaign','Offline','Connect to view Info Flow.');
   if(!state.infoflow.loaded) return shellMsg('campaign','Loading Info Flow…','Fetching announcements and documents.');
-  const u=state.infoflow.unlocked; const tab=state.infoflow.tab;
-  const sub=(id,label,icon)=>`<div class="tabbtn flex items-center gap-1 ${tab===id?'on':''}" onclick="state.infoflow.tab='${id}'; render()"><span class="ms text-[16px]">${icon}</span><span class="hidden sm:inline">${label}</span></div>`;
-  const chips=['all',...ifTopics()].map(t=>{ const on=state.infoflow.topic===t;
-    return `<button class="chip" style="${on?'background:var(--primary);color:var(--on-primary)':'background:rgba(255,255,255,.06);color:var(--on-var)'}" data-t="${esc(t)}" onclick="state.infoflow.topic=this.dataset.t; render()">${t==='all'?'All':esc(t)}</button>`; }).join('');
-  const body = tab==='docs'? ifDocsView() : tab==='facts'? ifFactsView() : ifAnnView();
+  const u=state.infoflow.unlocked;
+  const lockBtn = u
+    ? `<button class="btn btn-ghost btn-sm" onclick="ifLock()" title="Lock posting on this device"><span class="ms text-[16px]" style="color:var(--primary)">lock_open</span>Unlocked · Lock</button>`
+    : `<button class="btn btn-ghost btn-sm" onclick="requireUnlock()"><span class="ms text-[16px]">lock</span>Unlock to post</button>`;
+  if(state.infoflow.subject) return infoSubjectDetail(state.infoflow.subject, u, lockBtn);
+  return infoSubjectsView(u, lockBtn);
+}
+const SUBJ_ICONS={ elevator:'elevator', mix:'science', submittal:'description', permit:'verified', rfi:'help_center', concrete:'foundation', embed:'push_pin', mep:'bolt', electrical:'bolt', plumb:'plumbing', safety:'health_and_safety', schedule:'calendar_month', inspection:'fact_check', survey:'straighten', steel:'architecture', rebar:'grid_4x4' };
+function subjIcon(name){ const n=(name||'').toLowerCase(); for(const k in SUBJ_ICONS) if(n.includes(k)) return SUBJ_ICONS[k]; return 'folder_open'; }
+function infoSubjects(){ // union of configured subjects + any used on items, config order first
+  const cfg=ifTopics(); const used=new Set();
+  [state.infoflow.ann, state.infoflow.docs, state.infoflow.facts].forEach(o=>Object.values(o||{}).forEach(x=>used.add(x.topic||'General')));
+  const out=cfg.slice(); used.forEach(t=>{ if(!out.includes(t)) out.push(t); }); return out;
+}
+function subjectCounts(name){
+  const f=o=>Object.values(o||{}).filter(x=>(x.topic||'General')===name);
+  const ann=f(state.infoflow.ann), docs=f(state.infoflow.docs), facts=f(state.infoflow.facts);
+  let last=''; [...ann.map(a=>a.postedAt), ...docs.map(d=>d.addedAt)].forEach(t=>{ if(t&&t>last) last=t; });
+  return { ann:ann.length, docs:docs.length, facts:facts.length, last };
+}
+function infoSubjectsView(u, lockBtn){
+  const subs=infoSubjects();
+  const cards=subs.map(name=>{ const c=subjectCounts(name);
+    return `<div class="card p-4 cursor-pointer" onclick="openSubject(this.dataset.s)" data-s="${esc(name)}">
+      <div class="flex items-center gap-2 mb-2"><span class="ms text-[24px]" style="color:var(--primary)">${subjIcon(name)}</span><div class="display font-semibold text-base flex-1 truncate">${esc(name)}</div><span class="ms text-white/25">chevron_right</span></div>
+      <div class="text-xs text-white/55">${c.ann} update${c.ann===1?'':'s'} · ${c.docs} doc${c.docs===1?'':'s'} · ${c.facts} fact${c.facts===1?'':'s'}</div>
+      <div class="text-xs text-white/30 mt-1">${c.last?'Updated '+relTime(c.last):'No updates yet'}</div>
+    </div>`;
+  }).join('');
   return `<div class="max-w-[1100px] mx-auto px-4 py-4">
-    <div class="flex items-center gap-2 mb-3 flex-wrap">
+    <div class="flex items-center gap-2 mb-1 flex-wrap">
       <div class="display font-bold text-lg flex items-center gap-2"><span class="ms" style="color:var(--primary)">campaign</span>Info Flow</div>
-      <div class="seg ml-1">${sub('ann','Announcements','feed')}${sub('docs','Documents','description')}${sub('facts','Quick Info','bolt')}</div>
-      <div class="ml-auto">${ u
-        ? `<button class="btn btn-ghost btn-sm" onclick="ifLock()" title="Lock posting on this device"><span class="ms text-[16px]" style="color:var(--primary)">lock_open</span>Unlocked · Lock</button>`
-        : `<button class="btn btn-ghost btn-sm" onclick="requireUnlock()"><span class="ms text-[16px]">lock</span>Unlock to post</button>` }</div>
+      <div class="ml-auto">${lockBtn}</div>
     </div>
-    <div class="flex items-center gap-1.5 mb-3 flex-wrap">
-      <span class="lcaps mr-1" style="font-size:10px">Topic</span>${chips}
-      ${u?`<button class="icobtn" title="Add topic" onclick="addTopic()"><span class="ms text-[16px]">add</span></button>`:''}
+    <div class="text-sm text-white/45 mb-4">Coordination hub — pick a subject to see everything for it.</div>
+    <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">${cards}
+      ${u?`<button class="card p-4 flex items-center justify-center gap-2 text-white/60" style="border-style:dashed" onclick="addTopic()"><span class="ms">create_new_folder</span>New subject</button>`:''}
+    </div></div>`;
+}
+function infoSubjectDetail(subject, u, lockBtn){
+  return `<div class="max-w-[1100px] mx-auto px-4 py-4">
+    <div class="flex items-center gap-2 mb-4 flex-wrap">
+      <button class="btn btn-ghost btn-sm" onclick="backToSubjects()"><span class="ms text-[16px]">arrow_back</span>Subjects</button>
+      <span class="ms text-[22px]" style="color:var(--primary)">${subjIcon(subject)}</span>
+      <div class="display font-bold text-xl">${esc(subject)}</div>
+      ${u?`<button class="icobtn" title="Rename subject" onclick="renameSubject(this.dataset.s)" data-s="${esc(subject)}"><span class="ms text-[16px]">edit</span></button>
+         <button class="icobtn" title="Delete subject" onclick="delSubject(this.dataset.s)" data-s="${esc(subject)}"><span class="ms text-[16px]">delete</span></button>`:''}
+      <div class="ml-auto">${lockBtn}</div>
     </div>
-    ${body}
-    <div class="text-xs text-white/30 mt-3">Central hub · everyone can view${u?' · you can post':' · unlock to post'}.</div>
+    <div class="lcaps mb-2 flex items-center gap-2"><span class="ms text-[15px]" style="color:var(--primary)">feed</span>Updates</div>
+    ${ifAnnView()}
+    <div class="lcaps mb-2 mt-5 flex items-center gap-2"><span class="ms text-[15px]" style="color:var(--primary)">description</span>Documents</div>
+    ${ifDocsView()}
+    <div class="lcaps mb-2 mt-5 flex items-center gap-2"><span class="ms text-[15px]" style="color:var(--primary)">bolt</span>Quick Info</div>
+    ${ifFactsView()}
   </div>`;
 }
-function ifFilter(obj){ const tf=state.infoflow.topic; let list=Object.entries(obj||{}).map(([id,x])=>({id,...x})); if(tf!=='all') list=list.filter(x=>(x.topic||'General')===tf); return list; }
+function openSubject(name){ state.infoflow.subject=name; render(); window.scrollTo(0,0); }
+function backToSubjects(){ state.infoflow.subject=null; render(); }
+function renameSubject(name){ if(!requireUnlock()) return; const nn=(prompt('Rename subject:', name)||'').trim(); if(!nn||nn===name) return;
+  const ts=ifTopics().map(t=>t===name?nn:t); if(!ts.includes(nn)) {} fb.set('infoflow/config/topics', [...new Set(ts)]);
+  ['ann','docs','facts'].forEach(k=>Object.entries(state.infoflow[k]||{}).forEach(([id,x])=>{ if((x.topic||'General')===name) fb.update('infoflow/'+k+'/'+id,{topic:nn}); }));
+  state.infoflow.subject=nn; render(); toast('Subject renamed');
+}
+function delSubject(name){ if(!requireUnlock()) return;
+  const c=subjectCounts(name); const n=c.ann+c.docs+c.facts;
+  if(!confirm(`Delete subject “${name}”${n?' and its '+n+' item(s)':''}?`)) return;
+  ['ann','docs','facts'].forEach(k=>Object.entries(state.infoflow[k]||{}).forEach(([id,x])=>{ if((x.topic||'General')===name) fb.remove('infoflow/'+k+'/'+id); }));
+  fb.set('infoflow/config/topics', ifTopics().filter(t=>t!==name));
+  state.infoflow.subject=null; render(); toast('Subject deleted');
+}
+function ifFilter(obj){ const s=state.infoflow.subject; let list=Object.entries(obj||{}).map(([id,x])=>({id,...x})); if(s) list=list.filter(x=>(x.topic||'General')===s); return list; }
 function ifAnnView(){
   const u=state.infoflow.unlocked;
   const list=ifFilter(state.infoflow.ann).sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0) || String(b.postedAt||'').localeCompare(String(a.postedAt||'')));
@@ -1470,7 +1520,7 @@ function ifAnnView(){
 }
 function openAnn(id){
   if(!requireUnlock()) return;
-  const a=id?{...state.infoflow.ann[id]}:{ title:'',body:'',topic:(state.infoflow.topic!=='all'?state.infoflow.topic:ifTopics()[0]||'General'),pinned:false,docIds:[],link:'' };
+  const a=id?{...state.infoflow.ann[id]}:{ title:'',body:'',topic:(state.infoflow.subject||ifTopics()[0]||'General'),pinned:false,docIds:[],link:'' };
   const topicOpts=ifTopics().map(t=>`<option ${t===a.topic?'selected':''}>${esc(t)}</option>`).join('');
   const docOpts=Object.entries(state.infoflow.docs||{}).map(([did,d])=>`<label class="flex items-center gap-2 text-sm py-0.5"><input type="checkbox" value="${did}" ${(a.docIds||[]).includes(did)?'checked':''} class="ifDoc"> ${esc(d.title)}</label>`).join('') || '<div class="text-xs text-white/40">No documents yet — add some in the Documents tab.</div>';
   $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-5 w-full max-w-lg">
@@ -1507,7 +1557,7 @@ function ifDocsView(){
 }
 function openDoc(){
   if(!requireUnlock()) return;
-  const cur=state.infoflow.topic!=='all'?state.infoflow.topic:'';
+  const cur=state.infoflow.subject||ifTopics()[0]||'';
   const topicOpts=ifTopics().map(t=>`<option ${t===cur?'selected':''}>${esc(t)}</option>`).join('');
   $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-5 w-full max-w-md">
     <div class="display font-semibold text-lg mb-3">Add document</div>
@@ -1563,7 +1613,7 @@ function ifFactsView(){
 }
 function openFact(id){
   if(!requireUnlock()) return;
-  const f=id?{...state.infoflow.facts[id]}:{ label:'',value:'',date:'',topic:(state.infoflow.topic!=='all'?state.infoflow.topic:ifTopics()[0]||'General') };
+  const f=id?{...state.infoflow.facts[id]}:{ label:'',value:'',date:'',topic:(state.infoflow.subject||ifTopics()[0]||'General') };
   const topicOpts=ifTopics().map(t=>`<option ${t===f.topic?'selected':''}>${esc(t)}</option>`).join('');
   $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-5 w-full max-w-md">
     <div class="display font-semibold text-lg mb-3">${id?'Edit':'Add'} quick info</div>

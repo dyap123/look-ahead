@@ -43,6 +43,9 @@
   option, select option, optgroup{ background:#0f1722 !important; color:#eef3f9 !important; }
   .fld{ background:rgba(255,255,255,.06); border:1px solid var(--outline); border-radius:4px; color:var(--on); padding:6px 9px; font-size:13px; }
   .fld:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 2px rgba(47,128,237,.25); }
+  /* hide native number spinner so the days value isn't clipped (we have +/- in the popover) */
+  input[type=number].fld{ -moz-appearance:textfield; appearance:textfield; padding-left:4px; padding-right:4px; }
+  input[type=number].fld::-webkit-outer-spin-button, input[type=number].fld::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
   .btn{ display:inline-flex; align-items:center; gap:6px; border-radius:8px; padding:7px 13px; font-size:13px; font-weight:600; cursor:pointer; border:1px solid transparent; transition:.12s; user-select:none; }
   .btn-green{ background:var(--primary); color:var(--on-primary); font-weight:700; } .btn-green:hover{ background:#4a9bf0; }
   .btn-ghost{ background:transparent; color:var(--on); border-color:var(--outline-v); } .btn-ghost:hover{ background:rgba(255,255,255,.05); border-color:var(--outline); }
@@ -67,12 +70,18 @@
   .gantt .day{ width:var(--dayw,24px); min-width:var(--dayw,24px); max-width:var(--dayw,24px); height:26px; text-align:center; padding:0; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:10px; }
   .gantt-card.gfull{ position:fixed; inset:0; z-index:60; border-radius:0; padding:14px; background:var(--bg); overflow:auto; }
   .gantt .lab{ padding:4px 8px; white-space:nowrap; }
-  .gantt .tname{ position:sticky; left:0; z-index:3; background:#0f1722; min-width:180px; max-width:240px; overflow:hidden; text-overflow:ellipsis; }
-  .gantt thead .tname{ z-index:5; }
+  /* freeze the 5 left label columns so the titles follow horizontal scroll */
+  .gantt .c-task,.gantt .c-start,.gantt .c-finish,.gantt .c-days,.gantt .c-co{ position:sticky; z-index:3; background:#0f1722; }
+  .gantt thead .c-task,.gantt thead .c-start,.gantt thead .c-finish,.gantt thead .c-days,.gantt thead .c-co{ z-index:6; }
+  .gantt .c-task{ left:0; width:156px; min-width:156px; max-width:156px; overflow:hidden; text-overflow:ellipsis; }
+  .gantt .c-start{ left:156px; width:50px; min-width:50px; max-width:50px; }
+  .gantt .c-finish{ left:206px; width:50px; min-width:50px; max-width:50px; }
+  .gantt .c-days{ left:256px; width:36px; min-width:36px; max-width:36px; }
+  .gantt .c-co{ left:292px; width:50px; min-width:50px; max-width:50px; }
   .gantt thead th{ background:#0f1722; }
   .gantt .wknd{ background:rgba(137,148,130,.12); }
   .gantt .hol{ background:rgba(255,180,171,.14); }
-  .gantt .secband td{ background:rgba(0,83,219,.22); color:#dbe1ff; font-weight:700; padding:5px 10px; position:sticky; left:0; border-left:3px solid var(--blue-c); }
+  .gantt .secband td{ background:#16243a; color:#dbe1ff; font-weight:700; padding:5px 10px; position:sticky; left:0; z-index:4; border-left:3px solid var(--blue-c); }
   .gantt .today{ box-shadow:inset 2px 0 0 var(--blue); }
   .gantt td.gcell{ cursor:pointer; }
   .gantt td.gcell:hover{ outline:2px solid var(--blue); outline-offset:-2px; }
@@ -83,7 +92,7 @@
   .secname{ background:transparent; border:1px solid transparent; color:var(--on); font-size:15px; padding:4px 7px; border-radius:4px; }
   .secname:hover{ border-color:var(--outline-v); background:rgba(255,255,255,.03); }
   .secname:focus{ outline:none; border-color:var(--primary); background:rgba(255,255,255,.05); }
-  .trow{ display:grid; grid-template-columns: 46px 1fr 42px 102px 102px 40px 150px auto; gap:8px; align-items:center; padding:5px 10px; border-bottom:1px solid rgba(255,255,255,.05); }
+  .trow{ display:grid; grid-template-columns: 30px 1fr 44px 102px 102px 40px 150px auto; gap:8px; align-items:center; padding:5px 10px; border-bottom:1px solid rgba(255,255,255,.05); }
   .trow:nth-child(even){ background:rgba(255,255,255,.015); }
   .trow:hover{ background:rgba(255,255,255,.04); }
   .trow.selrow{ background:rgba(47,128,237,.12) !important; }
@@ -92,10 +101,10 @@
   .selbox{ width:15px; height:15px; accent-color:var(--primary); cursor:pointer; }
   .statusdot{ display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:6px; cursor:pointer; background:transparent; border:none; }
   .statusdot:hover{ background:rgba(255,255,255,.08); }
-  @media (max-width:880px){ .trow{ grid-template-columns: 44px 1fr 38px 96px 40px 124px auto; gap:6px; } .trow .col-finish{ display:none; } }
-  /* split build view: compact editor (select, status, name, days, company, actions);
+  @media (max-width:880px){ .trow{ grid-template-columns: 30px 1fr 40px 96px 40px 124px auto; gap:6px; } .trow .col-finish{ display:none; } }
+  /* split build view: compact editor (status, name, days, company, actions);
      dates live in the Gantt beside it, full edit via the row's edit popover */
-  .split-editor .trow{ grid-template-columns: 46px 1fr 40px 122px auto; gap:6px; }
+  .split-editor .trow{ grid-template-columns: 30px 1fr 44px 122px auto; gap:6px; }
   /* fit-to-screen: tiny day cells become colored bars (letters hidden) */
   .gantt.tiny .day, .gantt.tiny .day *{ font-size:0 !important; }
   /* look-ahead calendar */
@@ -124,7 +133,7 @@ const NS = 'look-ahead-schedule';
 const state = {
   nav: 'schedule',
   companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
-  resolved: {}, online: false, showPreview: true, seeded: false, collapsed: {}, sel: {},
+  resolved: {}, online: false, showPreview: true, seeded: false, collapsed: {}, lastTask: null,
   view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company', gFull: false, gFit: false, buildLayout: 'split',
   tools: { assets:{}, config:{}, loaded:false, q:'', status:'all', tab:'dash', groupBy:'category' },
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
@@ -485,15 +494,14 @@ function buildView(p){
 function editorPanel(p, compact){
   const secs=sectionList(p);
   if(!secs.length) return `<div class="card p-8 text-center text-white/50">No sections yet. Click <b>Insert Cycle</b> to drop in a full foundation sequence, or <b>Add Section</b>.</div>`;
-  return bulkBar() + secs.map(s=>{
+  return secs.map(s=>{
     const tasks=tasksOf(p,s.id);
     const collapsed=!!state.collapsed[s.id];
     const doneN=tasks.filter(t=>taskStatus(t)==='done').length;
-    const allSel=tasks.length>0 && tasks.every(t=>state.sel[t.id]);
     const rows=tasks.map(t=>taskRow(p,t,compact)).join('');
     const headRow = compact
-      ? `<div class="flex items-center"><input type="checkbox" class="selbox" ${allSel?'checked':''} onclick="selAllSection('${s.id}', this.checked)" title="Select all in section"></div><div>Name</div><div class="text-center">Days</div><div>Company</div><div></div>`
-      : `<div class="flex items-center"><input type="checkbox" class="selbox" ${allSel?'checked':''} onclick="selAllSection('${s.id}', this.checked)" title="Select all in section"></div><div>Name</div><div class="text-center">Days</div><div>Start</div><div class="col-finish">Finish</div><div class="text-center">Link</div><div>Company</div><div></div>`;
+      ? `<div></div><div>Name</div><div class="text-center">Days</div><div>Company</div><div></div>`
+      : `<div></div><div>Name</div><div class="text-center">Days</div><div>Start</div><div class="col-finish">Finish</div><div class="text-center">Link</div><div>Company</div><div></div>`;
     return `<div class="card mb-4 overflow-hidden">
       <div class="secband-edit">
         <button class="icobtn" title="${collapsed?'Expand':'Collapse'} section" onclick="toggleCollapse('${s.id}')" style="color:var(--blue)"><span class="ms text-[20px]">${collapsed?'chevron_right':'expand_more'}</span></button>
@@ -520,10 +528,9 @@ function taskRow(p,t,compact){
   const r=state.resolved[t.id]||{}; const chained=t.depMode==='afterPrev';
   const opts=companyList().map(c=>`<option value="${c.id}" ${c.id===t.companyId?'selected':''}>${esc(c.name)}</option>`).join('');
   const c=state.companies[t.companyId];
-  const st=statusMeta(taskStatus(t)); const done=taskStatus(t)==='done'; const sel=!!state.sel[t.id];
-  const lead=`<div class="flex items-center gap-1.5">
-      <input type="checkbox" class="selbox" ${sel?'checked':''} onclick="toggleSel('${t.id}')" title="Select for bulk actions">
-      <button class="statusdot" onclick="cycleStatus('${t.id}')" title="${st.label} — click to advance" style="color:${st.color}"><span class="ms text-[19px]">${st.icon}</span></button>
+  const st=statusMeta(taskStatus(t)); const done=taskStatus(t)==='done';
+  const lead=`<div class="flex items-center justify-center">
+      <button class="statusdot" onclick="bubbleClick('${t.id}', event.shiftKey)" title="${st.label} — click to advance · shift-click to mark a range" style="color:${st.color}"><span class="ms text-[20px]">${st.icon}</span></button>
     </div>`;
   const nameI=`<input class="fld" value="${esc(t.name)}" style="${done?'text-decoration:line-through;opacity:.55':''}" onchange="changeTaskField('${t.id}','name',this.value)">`;
   const daysI=`<input class="fld mono text-center" type="number" min="1" value="${t.days}" title="Working days" onchange="changeTaskField('${t.id}','days',this.value)">`;
@@ -536,7 +543,7 @@ function taskRow(p,t,compact){
         <button class="icobtn" style="width:16px;height:12px" title="Move down" onclick="moveTask('${t.id}',1)"><span class="ms" style="font-size:13px">expand_more</span></button>
       </div>`;
   if(compact){
-    return `<div class="trow ${sel?'selrow':''}">${lead}${nameI}${daysI}${companyI}
+    return `<div class="trow">${lead}${nameI}${daysI}${companyI}
       <div class="flex items-center gap-0.5 justify-end">
         ${reorder}
         <button class="icobtn" title="Edit dates / chain / pour" onclick="openTaskQuick('${t.id}')"><span class="ms text-[16px]">tune</span></button>
@@ -544,7 +551,7 @@ function taskRow(p,t,compact){
       </div>
     </div>`;
   }
-  return `<div class="trow ${sel?'selrow':''}">${lead}${nameI}${daysI}
+  return `<div class="trow">${lead}${nameI}${daysI}
     ${chained
       ? `<div class="fld mono flex items-center" style="color:var(--on-var);opacity:.7" title="Auto from previous task">${esc(fmtMD(r.start))}</div>`
       : `<input class="fld mono" type="date" value="${esc(t.start||r.start||p.startDate)}" onchange="changeTaskField('${t.id}','start',this.value)">`}
@@ -558,20 +565,6 @@ function taskRow(p,t,compact){
       <button class="icobtn" title="Duplicate" onclick="dupTask('${t.id}')"><span class="ms text-[16px]">content_copy</span></button>
       <button class="icobtn" title="Delete" onclick="delTask('${t.id}')"><span class="ms text-[16px]">close</span></button>
     </div>
-  </div>`;
-}
-function toggleSel(tid){ if(state.sel[tid]) delete state.sel[tid]; else state.sel[tid]=true; render(); }
-function selAllSection(sid,on){ const p=activeProject(); tasksOf(p,sid).forEach(t=>{ if(on) state.sel[t.id]=true; else delete state.sel[t.id]; }); render(); }
-function clearSel(){ state.sel={}; render(); }
-function bulkStatus(stat){ const ids=Object.keys(state.sel); if(!ids.length) return; pushUndo(); const p=activeProject(); ids.forEach(tid=>{ if(p.tasks[tid]) p.tasks[tid].status=stat; }); render(); saveActive(); toast(`${ids.length} task${ids.length>1?'s':''} marked ${statusMeta(stat).label.toLowerCase()}`); }
-function bulkBar(){
-  const n=Object.keys(state.sel).length; if(!n) return '';
-  return `<div class="card glass2 p-2 mb-3 flex items-center gap-2 flex-wrap" style="position:sticky;top:54px;z-index:25">
-    <span class="lcaps" style="font-size:10px;color:var(--blue)">${n} selected</span>
-    <button class="btn btn-green btn-sm" onclick="bulkStatus('done')"><span class="ms text-[16px]">check_circle</span>Mark done</button>
-    <button class="btn btn-ghost btn-sm" onclick="bulkStatus('doing')"><span class="ms text-[16px]">pending</span>In progress</button>
-    <button class="btn btn-ghost btn-sm" onclick="bulkStatus('todo')"><span class="ms text-[16px]">radio_button_unchecked</span>Not started</button>
-    <button class="btn btn-ghost btn-sm ml-auto" onclick="clearSel()"><span class="ms text-[16px]">close</span>Clear</button>
   </div>`;
 }
 
@@ -618,11 +611,11 @@ function ganttPanel(p){
         return `<td class="day ${cl} ${tdc} ${gc}" ${oc}></td>`;
       }).join('');
       body+=`<tr>
-        <td class="lab tname">${esc(t.name)}</td>
-        <td class="lab mono text-white/60">${esc(fmtMD(r.start))}</td>
-        <td class="lab mono text-white/60">${esc(fmtMD(r.finish))}</td>
-        <td class="lab text-center text-white/60">${t.days}</td>
-        <td class="lab"><span class="chip" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span></td>
+        <td class="lab c-task" title="${esc(t.name)}">${esc(t.name)}</td>
+        <td class="lab mono c-start text-white/60">${esc(fmtMD(r.start))}</td>
+        <td class="lab mono c-finish text-white/60">${esc(fmtMD(r.finish))}</td>
+        <td class="lab c-days text-center text-white/60">${t.days}</td>
+        <td class="lab c-co"><span class="chip" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span></td>
         ${cells}</tr>`;
     });
   });
@@ -647,7 +640,7 @@ function ganttPanel(p){
     <div class="scroll" id="ganttScroll" style="max-height:${state.gFull?'calc(100vh - 150px)':(state.view==='build'&&state.buildLayout==='split'?'calc(100vh - 175px)':'62vh')}; ${state.gFit?'overflow-x:hidden':''}">
       <table class="gantt ${state.gFit?'fit':''}" data-days="${days.length}" style="--dayw:${cellW}px">
         <thead>
-          <tr><th class="lab tname" style="background:#0f1722" rowspan="2">Task</th><th class="lab" style="background:#0f1722" rowspan="2">Start</th><th class="lab" style="background:#0f1722" rowspan="2">Finish</th><th class="lab" style="background:#0f1722" rowspan="2">Days</th><th class="lab" style="background:#0f1722" rowspan="2">Co.</th>${monthRow}</tr>
+          <tr><th class="lab c-task" rowspan="2">Task</th><th class="lab c-start" rowspan="2">Start</th><th class="lab c-finish" rowspan="2">Finish</th><th class="lab c-days" rowspan="2">Days</th><th class="lab c-co" rowspan="2">Co.</th>${monthRow}</tr>
           <tr>${dayHead}</tr>
         </thead>
         <tbody>${body}</tbody>
@@ -688,6 +681,23 @@ function taskStatus(t){ return t.status||'todo'; }
 function statusMeta(id){ return STATUS.find(s=>s.id===id)||STATUS[0]; }
 function setTaskStatus(tid,st){ const p=activeProject(); const t=p.tasks[tid]; if(!t)return; pushUndo(); t.status=st; render(); afterRender(); saveActive(); }
 function cycleStatus(tid){ const order=['todo','doing','done']; const cur=taskStatus(activeProject().tasks[tid]); setTaskStatus(tid, order[(order.indexOf(cur)+1)%3]); }
+function orderedTaskIds(){ const p=activeProject(); const out=[]; sectionList(p).forEach(s=>tasksOf(p,s.id).forEach(t=>out.push(t.id))); return out; }
+function bubbleClick(tid, shift){
+  const p=activeProject(); if(!p.tasks[tid]) return;
+  if(shift && state.lastTask && p.tasks[state.lastTask]){
+    const ids=orderedTaskIds(); let i=ids.indexOf(state.lastTask), j=ids.indexOf(tid);
+    if(i<0||j<0){ cycleStatus(tid); state.lastTask=tid; return; }
+    if(i>j){ const t=i; i=j; j=t; }
+    const target = taskStatus(p.tasks[tid])==='done' ? 'todo' : 'done';   // shift-click toggles the range
+    pushUndo();
+    for(let k=i;k<=j;k++){ if(p.tasks[ids[k]]) p.tasks[ids[k]].status=target; }
+    render(); saveActive(); afterRender();
+    toast(`${j-i+1} task${j-i?'s':''} marked ${statusMeta(target).label.toLowerCase()}`);
+  } else {
+    cycleStatus(tid);
+  }
+  state.lastTask=tid;
+}
 function openTaskQuick(tid){
   const p=activeProject(); const t=p.tasks[tid]; if(!t) return; const r=state.resolved[tid]||{};
   const opts=companyList().map(cc=>`<option value="${cc.id}" ${cc.id===t.companyId?'selected':''}>${esc(cc.name)}</option>`).join('');

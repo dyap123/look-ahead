@@ -65,8 +65,7 @@
   .gantt{ border-collapse:separate; border-spacing:0; font-size:11px; }
   .gantt th,.gantt td{ border-right:1px solid rgba(255,255,255,.06); border-bottom:1px solid rgba(255,255,255,.06); }
   .gantt .day{ width:var(--dayw,24px); min-width:var(--dayw,24px); max-width:var(--dayw,24px); height:26px; text-align:center; padding:0; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:10px; }
-  .gantt-card:fullscreen{ background:var(--bg); padding:16px; overflow:auto; }
-  .gantt-card:fullscreen .scroll{ max-height:90vh; }
+  .gantt-card.gfull{ position:fixed; inset:0; z-index:60; border-radius:0; padding:14px; background:var(--bg); overflow:auto; }
   .gantt .lab{ padding:4px 8px; white-space:nowrap; }
   .gantt .tname{ position:sticky; left:0; z-index:3; background:#0f1722; min-width:180px; max-width:240px; overflow:hidden; text-overflow:ellipsis; }
   .gantt thead .tname{ z-index:5; }
@@ -117,7 +116,7 @@ const state = {
   nav: 'schedule',
   companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
   resolved: {}, online: false, showPreview: true, seeded: false, collapsed: {},
-  view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company',
+  view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company', gFull: false,
   tools: { assets:{}, config:{}, loaded:false, q:'', status:'all', tab:'dash', groupBy:'category' },
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
   infoflow: { ann:{}, docs:{}, facts:{}, config:{}, loaded:false, loading:false, subject:null, unlocked:(localStorage.getItem('la_if_unlocked')==='1') },
@@ -419,6 +418,8 @@ function header(){
       </div>
       <div class="ml-auto flex items-center gap-2 flex-wrap">
         ${state.nav==='schedule' ? `<select class="fld" title="Load a schedule" onchange="state.meta.activeProjectId=this.value; recomputeActive(); render(); saveActive()">${projOpts}</select>
+        <button class="icobtn" title="Rename schedule" onclick="renameProject()"><span class="ms text-[18px]">edit</span></button>
+        <button class="icobtn" title="Delete schedule" onclick="deleteProject()"><span class="ms text-[18px]">delete</span></button>
         <button class="btn btn-ghost" title="New schedule" onclick="newProject()"><span class="ms text-[18px]">add</span><span class="hidden lg:inline">New</span></button>
         <button class="btn btn-green" onclick="openExport()"><span class="ms">ios_share</span>Export</button>` : ''}
         ${saveStatusEl()}
@@ -572,7 +573,7 @@ function ganttPanel(p){
     });
   });
   const coOpts=`<option value="all">All crews</option>`+companyList().map(c=>`<option value="${c.id}" ${c.id===filt?'selected':''}>${esc(c.name)}</option>`).join('');
-  return `<div class="card gantt-card p-3" id="ganttCard">
+  return `<div class="card gantt-card p-3 ${state.gFull?'gfull':''}" id="ganttCard">
     <div class="flex items-center gap-2 mb-2 flex-wrap">
       <span class="lcaps" style="font-size:10px">Gantt</span>
       <div class="flex items-center gap-0.5">
@@ -584,11 +585,11 @@ function ganttPanel(p){
         <option value="company" ${!byStatus?'selected':''}>Color by crew</option>
         <option value="status" ${byStatus?'selected':''}>Color by status</option></select>
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('todayCol')?.scrollIntoView({inline:'center',block:'nearest'})"><span class="ms text-[16px]">today</span>Today</button>
-      <button class="icobtn ml-auto" title="Fullscreen" onclick="toggleGanttFull()"><span class="ms text-[18px]">fullscreen</span></button>
+      <button class="icobtn ml-auto" title="${state.gFull?'Exit fullscreen (Esc)':'Fullscreen'}" onclick="toggleGanttFull()"><span class="ms text-[18px]">${state.gFull?'fullscreen_exit':'fullscreen'}</span></button>
     </div>
     <div class="flex items-center flex-wrap gap-y-1 mb-1">${legend}</div>
     <div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">touch_app</span> Click a day cell to add or remove days for that task.</div>
-    <div class="scroll" style="max-height:62vh">
+    <div class="scroll" style="max-height:${state.gFull?'calc(100vh - 150px)':'62vh'}">
       <table class="gantt" style="--dayw:${cellW}px">
         <thead>
           <tr><th class="lab tname" style="background:#0f1722" rowspan="2">Task</th><th class="lab" style="background:#0f1722" rowspan="2">Start</th><th class="lab" style="background:#0f1722" rowspan="2">Finish</th><th class="lab" style="background:#0f1722" rowspan="2">Days</th><th class="lab" style="background:#0f1722" rowspan="2">Co.</th>${monthRow}</tr>
@@ -599,7 +600,7 @@ function ganttPanel(p){
     </div>
   </div>`;
 }
-function toggleGanttFull(){ const el=document.getElementById('ganttCard'); if(!el) return; if(document.fullscreenElement) document.exitFullscreen(); else el.requestFullscreen&&el.requestFullscreen(); }
+function toggleGanttFull(){ state.gFull=!state.gFull; render(); }
 function ganttSetDay(tid, day){
   const p=activeProject(); const t=p.tasks[tid]; const r=state.resolved[tid]; if(!t||!r) return;
   if(day < r.start) return; // can't end before it starts
@@ -868,6 +869,13 @@ function delHoliday(d){ delete state.holidays[d]; saveHolidays(); recomputeActiv
 function addHoliday(){ const d=$('#newHolDate').value; const l=$('#newHolLabel').value||'Holiday'; if(!d) return toast('Pick a date','warn'); state.holidays[d]=l; saveHolidays(); recomputeActive(); render(); }
 function updTpl(i,f,v){ if(f==='days') v=Math.max(1,parseInt(v)||1); state.templates.pileCapCycle.tasks[i][f]=v; saveTemplates(); render(); }
 function newProject(){ const name=prompt('Name this schedule:','New Schedule'); if(!name) return; pushUndo(); const pid=uid('p_'); let s=fmtYMD(new Date()); while(dow(s)!==1) s=addDays(s,1); state.projects[pid]={id:pid,name,subtitle:'Look Ahead Schedule',startDate:s,sections:{},tasks:{}}; state.meta.activeProjectId=pid; state.nav='schedule'; recomputeActive(); render(); saveActive(); toast('New schedule created'); }
+function renameProject(){ const p=activeProject(); if(!p) return; const nn=(prompt('Rename schedule:', p.name)||'').trim(); if(!nn||nn===p.name) return; p.name=nn; render(); saveActive(); toast('Schedule renamed'); }
+function deleteProject(){
+  const pid=activeId(); const p=activeProject(); if(!p) return;
+  if(!confirm(`Delete schedule “${p.name}”? This can’t be undone.`)) return;
+  delete state.projects[pid]; if(db) fb.remove('projects/'+pid);
+  ensureActive(); recomputeActive(); render(); saveActive(); toast('Schedule deleted');
+}
 function syncPours(){
   const p=activeProject(); const yr=Number(p.startDate.slice(0,4)); let n=0;
   Object.values(p.tasks).forEach(t=>{ if(t.linkedPourId && state.pours[t.linkedPourId]){ const pr=state.pours[t.linkedPourId]; if(pr.date){ const [m,d]=pr.date.split('/').map(Number); t.depMode='manual'; t.start=`${yr}-${pad(m)}-${pad(d)}`; n++; } } });
@@ -1137,7 +1145,9 @@ function rowsFromPdfLines(lines){
     name=name.replace(new RegExp('^('+IMP_KNOWN.join('|')+')\\s+','i'),'');
     name=name.replace(new RegExp('\\s+('+IMP_KNOWN.join('|')+')$','i'),'');
     name=name.replace(/\s*\d+[A-Za-z].*$/,'').replace(/(\s+[A-Z]\b)+\s*$/,'').trim();
-    if(name) rows.push({ section:curSection, name, start:parseAnyDate(dates[0]), finish:parseAnyDate(dates[1]), days, company:normCompany(company) });
+    // reject title / header / legend noise that isn't a real task
+    const NOISE=/^(la convention|look ?ahead|construction schedule|.*\bschedule\b|finish ?date|start ?date|task$|color$|company$|days$|legend|mon ?tue|^\d[\d.\/ ]*$)/i;
+    if(name && name.length>2 && !NOISE.test(name)) rows.push({ section:curSection, name, start:parseAnyDate(dates[0]), finish:parseAnyDate(dates[1]), days, company:normCompany(company) });
   };
   lines.forEach(line=>{
     if(secRe.test(line) && !dateG.test(line) && line.length<55){ flush(); curSection=line.trim(); return; }
@@ -1185,7 +1195,14 @@ async function handleImportFile(file){
     const ext=(file.name.split('.').pop()||'').toLowerCase();
     const res= ext==='pdf' ? await parsePdfRows(file) : await parseSheetRows(file);
     importRows=res.rows; importName=file.name.replace(/\.[^.]+$/,'');
-    if(!importRows.length){ $('#impResult').innerHTML=`<div class="text-sm" style="color:var(--error)">Couldn't find tasks — make sure the file has Task / Start / Finish columns.</div>`; return; }
+    if(!importRows.length){ $('#impResult').innerHTML=`<div class="text-sm" style="color:var(--error)">Couldn't find tasks — make sure the file has Task / Start / Finish columns. For a rendered Gantt PDF, export it to Excel/CSV and import that instead.</div>`; return; }
+    if(res.source==='pdf' && importRows.length<5){
+      $('#impResult').innerHTML=`<div class="card p-3" style="border-color:rgba(229,57,53,.45)">
+        <div class="flex items-center gap-2 mb-1"><span class="ms" style="color:var(--error)">warning</span><b>This PDF didn't parse cleanly</b></div>
+        <div class="text-sm text-white/65">Only ${importRows.length} item(s) came out — rendered Gantt PDFs scramble their text, so the schedule can't be rebuilt reliably. <b>Export your schedule to Excel/CSV and import that</b> for a perfect result (it reads the ULTIMATE GANTT template exactly).</div>
+        ${importRows.length?`<button class="btn btn-ghost btn-sm mt-2" onclick="doImport()">Import these ${importRows.length} anyway</button>`:''}
+      </div>`; return;
+    }
     const secs=new Set(importRows.map(r=>r.section||'Schedule'));
     const prev=importRows.slice(0,6).map(r=>`<div class="flex gap-2 text-xs py-0.5"><span class="flex-1 truncate">${esc(r.name)}</span><span class="mono text-white/45">${esc(fmtMD(r.start)||'—')}</span><span class="text-white/45 w-16 text-right truncate">${esc(r.company||'—')}</span></div>`).join('');
     $('#impResult').innerHTML=`<div class="card p-3">
@@ -1646,6 +1663,7 @@ function boot(){
   else { state.online=false; }
   render();
   document.addEventListener('keydown', e=>{
+    if(e.key==='Escape' && state.gFull){ state.gFull=false; render(); return; }
     const mod=e.metaKey||e.ctrlKey; if(!mod) return;
     const k=e.key.toLowerCase();
     if(k==='z' && state.nav==='schedule'){ e.preventDefault(); e.shiftKey?redo():undo(); }

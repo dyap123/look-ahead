@@ -70,26 +70,28 @@
   .gantt .day{ width:var(--dayw,24px); min-width:var(--dayw,24px); max-width:var(--dayw,24px); height:26px; text-align:center; padding:0; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:10px; }
   .gantt-card.gfull{ position:fixed; inset:0; z-index:60; border-radius:0; padding:14px; background:var(--bg); overflow:auto; }
   .gantt .lab{ padding:4px 8px; white-space:nowrap; }
-  /* freeze the 5 left label columns so the titles follow horizontal scroll */
-  .gantt .c-task,.gantt .c-start,.gantt .c-finish,.gantt .c-days,.gantt .c-co{ position:sticky; z-index:3; background:#0f1722; }
-  /* sticky top header (2 rows) + sticky section bands so the titles follow vertical scroll */
-  .gantt thead th{ position:sticky; background:#0f1722; }
-  .gantt thead .m-head{ top:0; z-index:5; height:22px; }
-  .gantt thead tr:last-child th{ top:22px; z-index:5; }
-  .gantt thead .c-task,.gantt thead .c-start,.gantt thead .c-finish,.gantt thead .c-days,.gantt thead .c-co{ top:0; z-index:9; }
-  .gantt .c-task{ left:0; width:var(--gw-task,156px); min-width:var(--gw-task,156px); max-width:var(--gw-task,156px); overflow:hidden; text-overflow:ellipsis; }
-  .gantt .c-start{ left:var(--gw-task,156px); width:50px; min-width:50px; max-width:50px; }
-  .gantt .c-finish{ left:calc(var(--gw-task,156px) + 50px); width:50px; min-width:50px; max-width:50px; }
-  .gantt .c-days{ left:calc(var(--gw-task,156px) + 100px); width:36px; min-width:36px; max-width:36px; }
-  .gantt .c-co{ left:calc(var(--gw-task,156px) + 136px); width:50px; min-width:50px; max-width:50px; }
-  .gantt th.c-task{ position:sticky; }
-  .colresize{ position:absolute; top:0; right:-4px; width:9px; height:100%; cursor:col-resize; z-index:9; }
-  .colresize::after{ content:''; position:absolute; top:0; right:4px; width:2px; height:100%; background:transparent; }
-  .colresize:hover::after, .colresize.dragging::after{ background:var(--blue); }
-  .gantt thead th{ background:#0f1722; }
+  /* ── two-pane gantt: frozen left list + scrolling timeline (works in every browser) ── */
+  .gpanes{ display:flex; align-items:stretch; }
+  .gleft{ flex:none; overflow:hidden; }
+  .gleft-tbl{ width:100%; table-layout:fixed; }
+  .gleft-tbl .l-task{ width:var(--gw-task,156px); overflow:hidden; text-overflow:ellipsis; }
+  .gleft-tbl .l-start,.gleft-tbl .l-finish{ width:54px; }
+  .gleft-tbl .l-days{ width:36px; text-align:center; }
+  .gleft-tbl .l-co{ width:52px; }
+  .gright{ flex:1 1 0; min-width:0; overflow:auto; }
+  .gdivider{ flex:none; width:7px; cursor:col-resize; background:rgba(255,255,255,.06); }
+  .gdivider:hover,.gdivider.dragging{ background:var(--blue); }
+  .splitdiv{ flex:none; width:8px; align-self:stretch; margin:0 4px; cursor:col-resize; border-radius:3px; background:rgba(255,255,255,.07); }
+  .splitdiv:hover,.splitdiv.dragging{ background:var(--blue); }
+  .gantt tbody tr{ height:27px; }
+  /* sticky headers within each pane's own scroll, sticky section bands below */
+  .gleft-tbl thead th{ position:sticky; top:0; z-index:5; background:#0f1722; height:48px; vertical-align:middle; }
+  .gright-tbl thead tr:first-child th{ position:sticky; top:0; z-index:5; background:#0f1722; }
+  .gright-tbl thead tr:last-child th{ position:sticky; top:22px; z-index:5; background:#0f1722; }
+  .gright-tbl .m-head{ height:22px; }
   .gantt .wknd{ background:rgba(137,148,130,.12); }
   .gantt .hol{ background:rgba(255,180,171,.14); }
-  .gantt .secband td{ background:#16243a; color:#dbe1ff; font-weight:700; padding:5px 10px; position:sticky; left:0; top:48px; z-index:4; border-left:3px solid var(--blue-c); }
+  .gantt .secband td{ background:#16243a; color:#dbe1ff; font-weight:700; padding:5px 10px; height:28px; position:sticky; top:48px; z-index:4; border-left:3px solid var(--blue-c); }
   .gantt .today{ box-shadow:inset 2px 0 0 var(--blue); }
   .gantt td.gcell{ cursor:pointer; }
   .gantt td.gcell:hover{ outline:2px solid var(--blue); outline-offset:-2px; }
@@ -144,6 +146,7 @@ const state = {
   resolved: {}, online: false, showPreview: true, seeded: false, collapsed: {}, lastTask: null,
   view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company', gFull: false, gFit: false, buildLayout: 'split',
   ganttNameW: (parseInt(localStorage.getItem('la_gnameW'))||156),
+  editorW: (parseInt(localStorage.getItem('la_editorW'))||470),
   tools: { assets:{}, config:{}, loaded:false, q:'', status:'all', tab:'dash', groupBy:'category' },
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
   infoflow: { ann:{}, docs:{}, facts:{}, config:{}, loaded:false, loading:false, subject:null, unlocked:(localStorage.getItem('la_if_unlocked')==='1') },
@@ -492,8 +495,9 @@ function buildView(p){
     </div>`;
   if(split){
     return `${toolbar}
-      <div class="flex flex-col xl:flex-row gap-4 items-start">
-        <div class="split-editor xl:flex-none xl:w-[34%] xl:min-w-[430px] xl:max-w-[560px] w-full min-w-0">${editorPanel(p, true)}</div>
+      <div class="flex flex-col xl:flex-row items-start" id="splitWrap" style="--ew:${state.editorW||470}px">
+        <div class="split-editor w-full xl:w-[var(--ew)] xl:flex-none min-w-0">${editorPanel(p, true)}</div>
+        <div class="splitdiv hidden xl:block" onmousedown="startSplitResize(event)" ontouchstart="startSplitResize(event)" title="Drag to resize the task list vs the Gantt"></div>
         <div class="xl:flex-1 w-full min-w-0 xl:sticky" style="top:58px">${ganttPanel(p)}</div>
       </div>`;
   }
@@ -601,14 +605,22 @@ function ganttPanel(p){
     ? STATUS.map(s=>`<span class="chip" style="background:${s.color};color:${textOn(s.color)}">&nbsp;</span><span class="text-xs text-white/60 mr-3">${s.label}</span>`).join('')
     : companyList().map(c=>`<span class="chip" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span><span class="text-xs text-white/60 mr-3">${esc(c.name)}</span>`).join('');
 
-  let body='';
+  let leftBody='', rightBody='';
   sectionList(p).forEach(s=>{
     const tks=tasksOf(p,s.id).filter(t=> filt==='all' || t.companyId===filt);
     if(!tks.length) return;
-    body+=`<tr class="secband"><td colspan="${days.length+5}">${esc(s.name)}</td></tr>`;
+    leftBody+=`<tr class="secband"><td colspan="5">${esc(s.name)}</td></tr>`;
+    rightBody+=`<tr class="secband"><td colspan="${days.length}"></td></tr>`;
     tks.forEach(t=>{
       const r=state.resolved[t.id]||{}; const c=state.companies[t.companyId]||{color:'#444',letter:'?'};
       const fill = byStatus ? statusMeta(taskStatus(t)).color : c.color;
+      leftBody+=`<tr>
+        <td class="lab l-task" title="${esc(t.name)}">${esc(t.name)}</td>
+        <td class="lab mono l-start text-white/60">${esc(fmtMD(r.start))}</td>
+        <td class="lab mono l-finish text-white/60">${esc(fmtMD(r.finish))}</td>
+        <td class="lab l-days text-center text-white/60">${t.days}</td>
+        <td class="lab l-co"><span class="chip" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span></td>
+      </tr>`;
       const cells=days.map(d=>{
         const within = r.start && d>=r.start && d<=r.finish;
         const canClick = r.start && d>=r.start;
@@ -619,16 +631,12 @@ function ganttPanel(p){
         const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':'';
         return `<td class="day ${cl} ${tdc} ${gc}" ${oc}></td>`;
       }).join('');
-      body+=`<tr>
-        <td class="lab c-task" title="${esc(t.name)}">${esc(t.name)}</td>
-        <td class="lab mono c-start text-white/60">${esc(fmtMD(r.start))}</td>
-        <td class="lab mono c-finish text-white/60">${esc(fmtMD(r.finish))}</td>
-        <td class="lab c-days text-center text-white/60">${t.days}</td>
-        <td class="lab c-co"><span class="chip" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span></td>
-        ${cells}</tr>`;
+      rightBody+=`<tr>${cells}</tr>`;
     });
   });
   const coOpts=`<option value="all">All crews</option>`+companyList().map(c=>`<option value="${c.id}" ${c.id===filt?'selected':''}>${esc(c.name)}</option>`).join('');
+  const nameW=state.ganttNameW||156; const leftW=nameW+196;
+  const vh=state.gFull?'calc(100vh - 150px)':(state.view==='build'&&state.buildLayout==='split'?'calc(100vh - 175px)':'62vh');
   return `<div class="card gantt-card p-3 ${state.gFull?'gfull':''}" id="ganttCard">
     <div class="flex items-center gap-2 mb-2 flex-wrap">
       <span class="lcaps" style="font-size:10px">Gantt</span>
@@ -645,26 +653,44 @@ function ganttPanel(p){
       <button class="icobtn ml-auto" title="${state.gFull?'Exit fullscreen (Esc)':'Fullscreen'}" onclick="toggleGanttFull()"><span class="ms text-[18px]">${state.gFull?'fullscreen_exit':'fullscreen'}</span></button>
     </div>
     <div class="flex items-center flex-wrap gap-y-1 mb-1">${legend}</div>
-    <div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">touch_app</span> Click a day cell to add or remove days for that task.${state.gFit?' Fit is on — toggle off to see letters.':''}</div>
-    <div class="scroll" id="ganttScroll" style="max-height:${state.gFull?'calc(100vh - 150px)':(state.view==='build'&&state.buildLayout==='split'?'calc(100vh - 175px)':'62vh')}; ${state.gFit?'overflow-x:hidden':''}">
-      <table class="gantt ${state.gFit?'fit':''}" data-days="${days.length}" style="--dayw:${cellW}px; --gw-task:${state.ganttNameW||156}px">
-        <thead>
-          <tr><th class="lab c-task" rowspan="2">Task<div class="colresize" title="Drag to resize the task column" onmousedown="startColResize(event)" ontouchstart="startColResize(event)"></div></th><th class="lab c-start" rowspan="2">Start</th><th class="lab c-finish" rowspan="2">Finish</th><th class="lab c-days" rowspan="2">Days</th><th class="lab c-co" rowspan="2">Co.</th>${monthRow}</tr>
-          <tr>${dayHead}</tr>
-        </thead>
-        <tbody>${body}</tbody>
-      </table>
+    <div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">touch_app</span> Click a day cell to add or remove days · drag the divider to resize the task list.</div>
+    <div class="gpanes">
+      <div class="gleft" id="ganttLeft" onwheel="ganttWheel(event)" style="width:${leftW}px; min-width:${leftW}px; height:${vh}; --gw-task:${nameW}px">
+        <table class="gantt gleft-tbl">
+          <thead><tr><th class="lab l-task">Task</th><th class="lab l-start">Start</th><th class="lab l-finish">Finish</th><th class="lab l-days">Days</th><th class="lab l-co">Co.</th></tr></thead>
+          <tbody>${leftBody}</tbody>
+        </table>
+      </div>
+      <div class="gdivider" title="Drag to resize the task list" onmousedown="startColResize(event)" ontouchstart="startColResize(event)"></div>
+      <div class="gright" id="ganttRight" style="height:${vh}; ${state.gFit?'overflow-x:hidden':''}" onscroll="syncGanttScroll()">
+        <table class="gantt gright-tbl ${state.gFit?'fit':''}" data-days="${days.length}" style="--dayw:${cellW}px">
+          <thead><tr>${monthRow}</tr><tr>${dayHead}</tr></thead>
+          <tbody>${rightBody}</tbody>
+        </table>
+      </div>
     </div>
   </div>`;
 }
+function syncGanttScroll(){ const l=document.getElementById('ganttLeft'), r=document.getElementById('ganttRight'); if(l&&r) l.scrollTop=r.scrollTop; }
+function startSplitResize(e){
+  e.preventDefault(); e.stopPropagation();
+  const handle=e.currentTarget; handle&&handle.classList.add('dragging');
+  const startX=(e.touches?e.touches[0].clientX:e.clientX);
+  const startW=state.editorW||470;
+  const wrap=document.getElementById('splitWrap');
+  function move(ev){ const x=(ev.touches?ev.touches[0].clientX:ev.clientX); const w=Math.max(300, Math.min(900, Math.round(startW+(x-startX)))); state.editorW=w; if(wrap) wrap.style.setProperty('--ew', w+'px'); if(state.gFit) fitGantt(); if(ev.cancelable) ev.preventDefault(); }
+  function up(){ handle&&handle.classList.remove('dragging'); document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); document.removeEventListener('touchmove',move); document.removeEventListener('touchend',up); try{localStorage.setItem('la_editorW',String(state.editorW));}catch(e){} }
+  document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); document.addEventListener('touchmove',move,{passive:false}); document.addEventListener('touchend',up);
+}
+function ganttWheel(e){ const r=document.getElementById('ganttRight'); if(r){ r.scrollTop+=e.deltaY; if(e.cancelable) e.preventDefault(); } }
 function toggleGanttFull(){ state.gFull=!state.gFull; render(); afterRender(); }
 function startColResize(e){
   e.preventDefault(); e.stopPropagation();
   const handle=e.currentTarget; handle&&handle.classList.add('dragging');
   const startX=(e.touches?e.touches[0].clientX:e.clientX);
   const startW=state.ganttNameW||156;
-  const tbl=document.querySelector('table.gantt');
-  function move(ev){ const x=(ev.touches?ev.touches[0].clientX:ev.clientX); const w=Math.max(80, Math.min(440, Math.round(startW+(x-startX)))); state.ganttNameW=w; if(tbl) tbl.style.setProperty('--gw-task', w+'px'); if(ev.cancelable) ev.preventDefault(); }
+  const left=document.getElementById('ganttLeft');
+  function move(ev){ const x=(ev.touches?ev.touches[0].clientX:ev.clientX); const w=Math.max(80, Math.min(440, Math.round(startW+(x-startX)))); state.ganttNameW=w; if(left){ left.style.width=(w+196)+'px'; left.style.minWidth=(w+196)+'px'; left.style.setProperty('--gw-task', w+'px'); } if(ev.cancelable) ev.preventDefault(); }
   function up(){ handle&&handle.classList.remove('dragging');
     document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up);
     document.removeEventListener('touchmove',move); document.removeEventListener('touchend',up);
@@ -676,13 +702,10 @@ function startColResize(e){
 }
 function fitGantt(){
   if(!state.gFit) return;
-  const sc=document.getElementById('ganttScroll'); if(!sc) return;
-  const tbl=sc.querySelector('table.gantt'); if(!tbl) return;
-  const head=tbl.querySelector('thead tr'); if(!head) return;
-  let labelW=0; const c=head.children; for(let i=0;i<5 && i<c.length;i++) labelW+=c[i].offsetWidth; // Task,Start,Finish,Days,Co
+  const r=document.getElementById('ganttRight'); if(!r) return;
+  const tbl=r.querySelector('table'); if(!tbl) return;
   const days=+tbl.dataset.days||1;
-  const avail=sc.clientWidth - labelW - 6;
-  const w=Math.max(3, Math.min(26, Math.floor(avail/days)));   // shrink to fit; never stretch past normal
+  const w=Math.max(3, Math.min(26, Math.floor((r.clientWidth-6)/days)));   // shrink to fit; never stretch past normal
   tbl.style.setProperty('--dayw', w+'px');
   tbl.classList.toggle('tiny', w<11);
 }

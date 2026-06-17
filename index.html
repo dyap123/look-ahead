@@ -54,6 +54,9 @@
   .crewbub{ display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; cursor:pointer; transition:background-color .12s, transform .08s; }
   .crewbub:hover{ background:rgba(255,255,255,.1); }
   .crewbub:active{ transform:scale(.9); }
+  #gxhair{ pointer-events:none; z-index:60; }
+  #gxhair .gxv, #gxhair .gxh{ position:fixed; background:rgba(47,128,237,.65); box-shadow:0 0 7px rgba(47,128,237,.55); pointer-events:none; }
+  #gxhair .gxlab{ position:fixed; pointer-events:none; background:var(--blue); color:#fff; font:600 11px/1 'JetBrains Mono',monospace; padding:3px 6px; border-radius:5px; box-shadow:0 2px 8px rgba(0,0,0,.4); }
   option, select option, optgroup{ background:#0f1722 !important; color:#eef3f9 !important; }
   .fld{ background:rgba(255,255,255,.06); border:1px solid var(--outline); border-radius:4px; color:var(--on); padding:6px 9px; font-size:13px; }
   .fld:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 2px rgba(47,128,237,.25); }
@@ -109,7 +112,19 @@
   .gdivider:hover,.gdivider.dragging{ background:var(--blue); }
   .splitdiv{ flex:none; width:4px; align-self:stretch; margin:0 3px; cursor:col-resize; border-radius:3px; background:rgba(255,255,255,.07); }
   .splitdiv:hover,.splitdiv.dragging{ background:var(--blue); }
-  .gantt tbody tr{ height:33px; }
+  .gantt tbody tr{ height:var(--rowh,33px); }
+  /* fit-to-screen: compress rows; tighten the LEFT controls so both panes stay row-aligned */
+  .gantt.fitv tbody td{ padding-top:0; padding-bottom:0; }
+  .gantt.fitv .tinp{ padding:0 3px; font-size:11px; line-height:1.1; }
+  .gantt.fitv .secname-g{ font-size:11px; padding:0 4px; }
+  .gantt.fitv .statusdot{ width:18px !important; height:18px !important; }
+  .gantt.fitv .statusdot .ms{ font-size:14px !important; }
+  .gantt.fitv .l-co .codot{ width:13px !important; height:13px !important; min-width:13px !important; font-size:8px !important; }
+  .gantt.fitv .l-co select.tinp{ padding:0 2px !important; }
+  .gantt.fitv .l-act .icobtn{ width:18px !important; height:18px !important; }
+  .gantt.fitv .l-act .icobtn .ms{ font-size:14px !important; }
+  .gantt.fitv .l-act .flex-col .icobtn{ height:9px !important; }
+  .gantt.fitv .l-act .flex-col .icobtn .ms{ font-size:11px !important; }
   /* sticky headers within each pane's own scroll, sticky section bands below */
   .gleft-tbl thead th{ position:sticky; top:0; z-index:5; background:#0f1722; height:48px; vertical-align:middle; }
   .gright-tbl thead tr:first-child th{ position:sticky; top:0; z-index:5; background:#0f1722; }
@@ -117,7 +132,8 @@
   .gright-tbl .m-head{ height:22px; }
   .gantt .wknd{ background:rgba(137,148,130,.12); }
   .gantt .hol{ background:rgba(255,180,171,.14); }
-  .gantt .secband td{ background:#16243a; color:#dbe1ff; font-weight:700; padding:3px 6px; height:38px; position:sticky; top:48px; z-index:4; border-left:3px solid var(--blue-c); }
+  .gantt .secband td{ background:#16243a; color:#dbe1ff; font-weight:700; padding:3px 6px; height:var(--bandh,38px); position:sticky; top:48px; z-index:4; border-left:3px solid var(--blue-c); }
+  .gantt.fitv .secband td{ padding-top:1px; padding-bottom:1px; }
   .gantt .today{ box-shadow:inset 2px 0 0 var(--blue); }
   .gantt td.gcell{ cursor:pointer; }
   .gantt td.gcell:hover{ outline:2px solid var(--blue); outline-offset:-2px; }
@@ -616,7 +632,7 @@ function ganttPanel(p){
   const DW=['S','M','T','W','T','F','S'];
   let monthRow=''; let i=0;
   while(i<days.length){ const m=days[i].slice(0,7); let span=0; while(i+span<days.length && days[i+span].slice(0,7)===m) span++; const d=parseYMD(days[i]); monthRow+=`<th class="lab m-head text-left" colspan="${span}" style="background:#0f1722">${MON[d.getMonth()]} ${d.getFullYear()}</th>`; i+=span; }
-  const dayHead=days.map(d=>{ const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':''; return `<th class="day ${cl}" ${d===today?'id="todayCol"':''}><div class="text-white/40 text-[9px]">${DW[dow(d)]}</div>${Number(d.slice(8))}</th>`; }).join('');
+  const dayHead=days.map(d=>{ const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':''; return `<th class="day ${cl}" data-d="${d}" ${d===today?'id="todayCol"':''}><div class="text-white/40 text-[9px]">${DW[dow(d)]}</div>${Number(d.slice(8))}</th>`; }).join('');
   const legend = byStatus
     ? STATUS.map(s=>`<span class="chip" style="background:${s.color};color:${textOn(s.color)}">&nbsp;</span><span class="text-xs text-white/60 mr-3">${s.label}</span>`).join('')
     : companyList().map(c=>`<span class="chip" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span><span class="text-xs text-white/60 mr-3">${esc(c.name)}</span>`).join('');
@@ -694,13 +710,13 @@ function ganttPanel(p){
         <select class="fld" title="Color bars by" onchange="state.gColor=this.value; render()">
           <option value="company" ${!byStatus?'selected':''}>Color by crew</option>
           <option value="status" ${byStatus?'selected':''}>Color by status</option></select>
-        <button class="btn btn-ghost btn-sm" onclick="state.gFit=!state.gFit; render(); afterRender()" style="${state.gFit?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Fit the whole timeline on screen"><span class="ms text-[16px]">fit_screen</span>Fit</button>
-        <button class="btn btn-ghost btn-sm" onclick="state.gPan=!state.gPan; render()" style="${state.gPan?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Pan: drag the timeline to scroll"><span class="ms text-[16px]">pan_tool</span>Pan</button>
+        <button class="btn btn-ghost btn-sm" onclick="state.gFit=!state.gFit; render(); afterRender()" style="${state.gFit?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Fit the whole schedule on one screen (compresses rows + timeline)"><span class="ms text-[16px]">fit_screen</span>Fit</button>
+        <button class="btn btn-ghost btn-sm" onclick="state.gPan=!state.gPan; if(!state.gPan)ganttCrossHide(); render()" style="${state.gPan?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Pan: drag the timeline to scroll, with a crosshair to line up overlaps"><span class="ms text-[16px]">pan_tool</span>Pan</button>
         <button class="btn btn-ghost btn-sm" onclick="document.getElementById('todayCol')?.scrollIntoView({inline:'center',block:'nearest'})"><span class="ms text-[16px]">today</span>Today</button>`:''}
         ${fsBtn}
       </div>
     </div>
-    ${tl?`<div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">${state.gPan?'pan_tool':'touch_app'}</span> ${state.gPan?'Pan on — drag the timeline to scroll around.':'Click a day cell to add/remove days · drag the dividers to resize.'}</div>`:''}
+    ${tl?`<div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">${state.gPan?'pan_tool':'touch_app'}</span> ${state.gPan?'Pan on — drag to scroll; the crosshair lines up which trades overlap on a given day.':'Click a day cell to add/remove days · drag the dividers to resize.'}</div>`:''}
     <div class="gpanes">
       <div class="gleft ${tl?'':'gfull-left'}" id="ganttLeft" ${tl?'onwheel="ganttWheel(event)"':''} style="${tl?`width:${leftW}px; min-width:${leftW}px;`:'width:100%;'} height:${vh}; --gw-task:${nameW}px">
         <table class="gantt gleft-tbl">
@@ -709,7 +725,7 @@ function ganttPanel(p){
         </table>
       </div>
       ${tl?`<div class="gdivider" title="Drag to resize the task list" onmousedown="startColResize(event)" ontouchstart="startColResize(event)"></div>
-      <div class="gright ${state.gPan?'canpan':''}" id="ganttRight" style="height:${vh}; ${state.gFit?'overflow-x:hidden':''}" onscroll="syncGanttScroll()" ${state.gPan?'onmousedown="startPan(event)"':''}>
+      <div class="gright ${state.gPan?'canpan':''}" id="ganttRight" style="height:${vh}; ${state.gFit?'overflow-x:hidden':''}" onscroll="syncGanttScroll()" ${state.gPan?'onmousedown="startPan(event)" onmousemove="ganttCross(event)" onmouseleave="ganttCrossHide()"':''}>
         <table class="gantt gright-tbl ${state.gFit?'fit':''}" data-days="${days.length}" style="--dayw:${cellW}px">
           <thead><tr>${monthRow}</tr><tr>${dayHead}</tr></thead>
           <tbody>${rightBody}</tbody>
@@ -739,6 +755,23 @@ function startPan(e){
   function up(){ r.classList.remove('panning'); document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); }
   document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); e.preventDefault();
 }
+function ganttCross(e){
+  const r=document.getElementById('ganttRight'); if(!r){ ganttCrossHide(); return; }
+  const rect=r.getBoundingClientRect();
+  if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom){ ganttCrossHide(); return; }
+  let ov=document.getElementById('gxhair');
+  if(!ov){ ov=document.createElement('div'); ov.id='gxhair'; ov.innerHTML='<div class="gxv"></div><div class="gxh"></div><div class="gxlab"></div>'; document.body.appendChild(ov); }
+  const v=ov.children[0], h=ov.children[1], lab=ov.children[2];
+  v.style.left=e.clientX+'px'; v.style.top=rect.top+'px'; v.style.height=rect.height+'px'; v.style.width='1px';
+  h.style.top=e.clientY+'px'; h.style.left=rect.left+'px'; h.style.width=rect.width+'px'; h.style.height='1px';
+  let txt='';
+  try{ const el=document.elementFromPoint(e.clientX,e.clientY); const cell=el&&el.closest('td,th'); const tbl=r.querySelector('table');
+    if(cell&&tbl&&tbl.tHead&&cell.cellIndex>=0){ const hr=tbl.tHead.rows[tbl.tHead.rows.length-1]; const th=hr.cells[cell.cellIndex]; if(th&&th.dataset.d) txt=fmtMD(th.dataset.d); } }catch(_){}
+  if(txt){ lab.textContent=txt; lab.style.display='block'; lab.style.left=Math.min(e.clientX+12, rect.right-56)+'px'; lab.style.top=(rect.top+4)+'px'; }
+  else lab.style.display='none';
+  ov.style.display='block';
+}
+function ganttCrossHide(){ const ov=document.getElementById('gxhair'); if(ov) ov.style.display='none'; }
 function toggleGanttFull(){ state.gFull=!state.gFull; render(); afterRender(); }
 function startColResize(e){
   e.preventDefault(); e.stopPropagation();
@@ -760,10 +793,24 @@ function fitGantt(){
   if(!state.gFit) return;
   const r=document.getElementById('ganttRight'); if(!r) return;
   const tbl=r.querySelector('table'); if(!tbl) return;
+  const left=document.getElementById('ganttLeft'); const ltbl=left&&left.querySelector('table');
+  // horizontal — shrink day columns so the whole timeline fits
   const days=+tbl.dataset.days||1;
   const w=Math.max(3, Math.min(26, Math.floor((r.clientWidth-6)/days)));   // shrink to fit; never stretch past normal
   tbl.style.setProperty('--dayw', w+'px');
   tbl.classList.toggle('tiny', w<11);
+  // vertical — shrink row heights so the whole schedule fits the pane height
+  const bands=tbl.querySelectorAll('tbody tr.secband').length;
+  const taskRows=(tbl.tBodies[0]?tbl.tBodies[0].rows.length:0)-bands;
+  const headH=tbl.tHead?tbl.tHead.offsetHeight:48;
+  const avail=r.clientHeight-headH-2;
+  let rowh=33, bandh=38;
+  if(taskRows>0 && avail>0){
+    // solve taskRows*rowh + bands*(rowh+3) <= avail; min 20px = floor the tightened left controls reach (keeps panes aligned)
+    rowh=Math.max(20, Math.min(33, Math.floor((avail - bands*3)/(taskRows+bands))));
+    bandh=Math.max(20, Math.min(38, rowh+3));
+  }
+  [tbl, ltbl].forEach(t=>{ if(!t)return; t.style.setProperty('--rowh', rowh+'px'); t.style.setProperty('--bandh', bandh+'px'); t.classList.toggle('fitv', rowh<28); });
 }
 function ganttSetDay(tid, day){
   const p=activeProject(); const t=p.tasks[tid]; const r=state.resolved[tid]; if(!t||!r) return;

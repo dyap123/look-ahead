@@ -381,6 +381,7 @@ function saveStatusEl(){
 }
 /* ----- undo / redo (per-schedule snapshot stack) ----- */
 let undoStack=[], redoStack=[];
+let gScroll={left:0,top:0}, gCenteredPid=null;   // remember timeline scroll across renders; auto-center on today once per schedule
 function snapProject(){ const pid=activeId(); return { pid, data: JSON.stringify(state.projects[pid]||{}) }; }
 function pushUndo(){ if(!activeId()) return; undoStack.push(snapProject()); if(undoStack.length>60) undoStack.shift(); redoStack=[]; }
 function applySnap(s){ state.projects[s.pid]=JSON.parse(s.data); state.meta.activeProjectId=s.pid; recomputeActive(); render(); saveActive(); }
@@ -467,6 +468,7 @@ function render(){
   else if(state.nav==='tools') view=toolsView();
   else if(state.nav==='infoflow') view=infoflowView();
   else view=builderView(p);
+  const _gr=document.getElementById('ganttRight'); if(_gr){ gScroll.left=_gr.scrollLeft; gScroll.top=_gr.scrollTop; }   // remember timeline scroll before rebuild
   $('#app').innerHTML = header() + view;
   if(typeof afterRender==='function') afterRender();
 }
@@ -711,8 +713,7 @@ function ganttPanel(p){
           <option value="company" ${!byStatus?'selected':''}>Color by crew</option>
           <option value="status" ${byStatus?'selected':''}>Color by status</option></select>
         <button class="btn btn-ghost btn-sm" onclick="state.gFit=!state.gFit; render(); afterRender()" style="${state.gFit?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Fit the whole schedule on one screen (compresses rows + timeline)"><span class="ms text-[16px]">fit_screen</span>Fit</button>
-        <button class="btn btn-ghost btn-sm" onclick="state.gPan=!state.gPan; if(!state.gPan)ganttCrossHide(); render()" style="${state.gPan?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Pan: drag the timeline to scroll, with a crosshair to line up overlaps"><span class="ms text-[16px]">pan_tool</span>Pan</button>
-        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('todayCol')?.scrollIntoView({inline:'center',block:'nearest'})"><span class="ms text-[16px]">today</span>Today</button>`:''}
+        <button class="btn btn-ghost btn-sm" onclick="state.gPan=!state.gPan; if(!state.gPan)ganttCrossHide(); render()" style="${state.gPan?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Pan: drag the timeline to scroll, with a crosshair to line up overlaps"><span class="ms text-[16px]">pan_tool</span>Pan</button>`:''}
         ${fsBtn}
       </div>
     </div>
@@ -1039,7 +1040,19 @@ function drawChart(id,cfg){ const cv=document.getElementById(id); if(!cv||!windo
 function afterRender(){
   if(state.nav==='tools'){ if(state.tools.tab!=='list') ensureChart().then(drawToolsCharts); return; }
   if(state.nav!=='schedule') return;
-  if(state.view==='build' && state.gFit){ fitGantt(); }
+  if(state.view==='build'){
+    if(state.gFit) fitGantt();
+    const gr=document.getElementById('ganttRight');
+    if(gr){
+      const pid=activeId();
+      if(gCenteredPid!==pid){                       // first open of this schedule → land on today
+        document.getElementById('todayCol')?.scrollIntoView({inline:'center',block:'nearest'});
+        gCenteredPid=pid; gScroll.left=gr.scrollLeft; gScroll.top=gr.scrollTop;
+      } else {                                       // otherwise keep where the user was (don't snap to start on every edit)
+        gr.scrollLeft=gScroll.left; gr.scrollTop=gScroll.top; syncGanttScroll();
+      }
+    }
+  }
   else if(state.view==='crew') ensureChart().then(()=>{ drawCrewChart(); });
   else if(state.view==='progress') ensureChart().then(drawProgressCharts);
 }

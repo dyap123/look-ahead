@@ -39,7 +39,21 @@
   .card.glass2{ background:#161d29; border:1px solid rgba(255,255,255,.16); border-radius:12px; box-shadow:0 24px 60px -18px #000; }
   input,select,textarea{ color-scheme:dark; }
   /* dark-theme select contrast: force readable closed value + option popup */
-  select.fld{ color:var(--on); font-weight:500; }
+  /* modern dropdowns: no native chrome, custom chevron, pill shape, hover glow */
+  select.fld{ color:var(--on); font-weight:500; appearance:none; -webkit-appearance:none; cursor:pointer;
+    background-color:rgba(255,255,255,.06); background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='7'%3E%3Cpath d='M1 1l4.5 4.5L10 1' stroke='%2397a6bb' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 9px center; padding-right:28px; border-radius:8px; transition:background-color .12s, border-color .12s, box-shadow .12s; }
+  select.fld:hover{ background-color:rgba(255,255,255,.1); border-color:var(--outline); }
+  select.fld:focus{ box-shadow:0 0 0 2px rgba(47,128,237,.3); }
+  .srch{ position:relative; display:inline-flex; align-items:center; }
+  .srch-i{ position:absolute; left:8px; font-size:16px; color:#7b8aa0; pointer-events:none; }
+  input.srch-in{ padding-left:28px; padding-right:24px; border-radius:8px; transition:background-color .12s, border-color .12s, box-shadow .12s; }
+  input.srch-in::-webkit-search-cancel-button{ -webkit-appearance:none; }
+  .srch-x{ position:absolute; right:6px; font-size:15px; color:#7b8aa0; cursor:pointer; border-radius:50%; }
+  .srch-x:hover{ color:var(--on); background:rgba(255,255,255,.08); }
+  .crewbub{ display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; cursor:pointer; transition:background-color .12s, transform .08s; }
+  .crewbub:hover{ background:rgba(255,255,255,.1); }
+  .crewbub:active{ transform:scale(.9); }
   option, select option, optgroup{ background:#0f1722 !important; color:#eef3f9 !important; }
   .fld{ background:rgba(255,255,255,.06); border:1px solid var(--outline); border-radius:4px; color:var(--on); padding:6px 9px; font-size:13px; }
   .fld:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 2px rgba(47,128,237,.25); }
@@ -156,7 +170,7 @@ const state = {
   nav: 'schedule',
   companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
   resolved: {}, online: false, showPreview: true, seeded: false, collapsed: {}, lastTask: null,
-  view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company', gFull: false, gFit: false, showTimeline: true, gPan: false,
+  view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company', gFull: false, gFit: false, showTimeline: true, gPan: false, gSearch: '', laSearch: '', crewHide: {},
   ganttNameW: (parseInt(localStorage.getItem('la_gnameW'))||156),
   editorW: (parseInt(localStorage.getItem('la_editorW'))||470),
   tools: { assets:{}, config:{}, loaded:false, q:'', status:'all', tab:'dash', groupBy:'category' },
@@ -610,9 +624,10 @@ function ganttPanel(p){
   const tl=state.showTimeline;
   const coAll=companyList();
   const coOptsFor=t=>coAll.map(c=>`<option value="${c.id}" ${c.id===t.companyId?'selected':''}>${esc(c.name)}</option>`).join('');
+  const q=(state.gSearch||'').trim().toLowerCase();
   let leftBody='', rightBody='';
   sectionList(p).forEach(s=>{
-    const tks=tasksOf(p,s.id).filter(t=> filt==='all' || t.companyId===filt);
+    const tks=tasksOf(p,s.id).filter(t=> (filt==='all' || t.companyId===filt) && (!q || (t.name||'').toLowerCase().includes(q) || (state.companies[t.companyId]&&state.companies[t.companyId].name||'').toLowerCase().includes(q)));
     if(!tks.length) return;
     const collapsed=!!state.collapsed[s.id];
     const doneN=tks.filter(t=>taskStatus(t)==='done').length;
@@ -664,25 +679,28 @@ function ganttPanel(p){
   const coOpts=`<option value="all">All crews</option>`+coAll.map(c=>`<option value="${c.id}" ${c.id===filt?'selected':''}>${esc(c.name)}</option>`).join('');
   const nameW=state.ganttNameW||200; const leftW=nameW+282;
   const vh=state.gFull?'calc(100vh - 150px)':'70vh';
-  const fsBtn=`<button class="icobtn ml-auto" title="${state.gFull?'Exit fullscreen (Esc)':'Fullscreen'}" onclick="toggleGanttFull()"><span class="ms text-[18px]">${state.gFull?'fullscreen_exit':'fullscreen'}</span></button>`;
+  const fsBtn=`<button class="icobtn" title="${state.gFull?'Exit fullscreen (Esc)':'Fullscreen'}" onclick="toggleGanttFull()"><span class="ms text-[18px]">${state.gFull?'fullscreen_exit':'fullscreen'}</span></button>`;
+  const searchBox=`<div class="srch"><span class="ms srch-i">search</span><input id="gSearchBox" class="fld srch-in" style="width:160px" placeholder="Find a task…" value="${esc(state.gSearch||'')}" oninput="gSearchInput(this.value)">${state.gSearch?`<span class="ms srch-x" onclick="gSearchInput('')">close</span>`:''}</div>`;
   return `<div class="card gantt-card p-3 ${state.gFull?'gfull':''}" id="ganttCard">
-    <div class="flex items-center gap-2 mb-2 flex-wrap">
-      <span class="lcaps" style="font-size:10px">Schedule</span>
-      ${tl?`<div class="flex items-center gap-0.5">
-        <button class="icobtn" title="Zoom out" onclick="state.gz=Math.max(0.6,+(state.gz-0.2).toFixed(2)); render()"><span class="ms text-[18px]">zoom_out</span></button>
-        <button class="icobtn" title="Zoom in" onclick="state.gz=Math.min(2,+(state.gz+0.2).toFixed(2)); render()"><span class="ms text-[18px]">zoom_in</span></button>
+    <div class="flex items-center gap-3 mb-2 flex-wrap">
+      ${tl?`<div class="flex items-center flex-wrap gap-y-1 flex-1 min-w-0">${legend}</div>`:`<span class="text-xs text-white/40 flex-1">Timeline hidden — task list only</span>`}
+      <div class="flex items-center gap-1.5 flex-wrap justify-end">
+        ${searchBox}
+        ${tl?`<div class="flex items-center gap-0.5">
+          <button class="icobtn" title="Zoom out" onclick="state.gz=Math.max(0.6,+(state.gz-0.2).toFixed(2)); render()"><span class="ms text-[18px]">zoom_out</span></button>
+          <button class="icobtn" title="Zoom in" onclick="state.gz=Math.min(2,+(state.gz+0.2).toFixed(2)); render()"><span class="ms text-[18px]">zoom_in</span></button>
+        </div>
+        <select class="fld" title="Filter by crew" onchange="state.gFilter=this.value; render()">${coOpts}</select>
+        <select class="fld" title="Color bars by" onchange="state.gColor=this.value; render()">
+          <option value="company" ${!byStatus?'selected':''}>Color by crew</option>
+          <option value="status" ${byStatus?'selected':''}>Color by status</option></select>
+        <button class="btn btn-ghost btn-sm" onclick="state.gFit=!state.gFit; render(); afterRender()" style="${state.gFit?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Fit the whole timeline on screen"><span class="ms text-[16px]">fit_screen</span>Fit</button>
+        <button class="btn btn-ghost btn-sm" onclick="state.gPan=!state.gPan; render()" style="${state.gPan?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Pan: drag the timeline to scroll"><span class="ms text-[16px]">pan_tool</span>Pan</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('todayCol')?.scrollIntoView({inline:'center',block:'nearest'})"><span class="ms text-[16px]">today</span>Today</button>`:''}
+        ${fsBtn}
       </div>
-      <select class="fld" title="Filter by crew" onchange="state.gFilter=this.value; render()">${coOpts}</select>
-      <select class="fld" title="Color bars by" onchange="state.gColor=this.value; render()">
-        <option value="company" ${!byStatus?'selected':''}>Color by crew</option>
-        <option value="status" ${byStatus?'selected':''}>Color by status</option></select>
-      <button class="btn btn-ghost btn-sm" onclick="state.gFit=!state.gFit; render(); afterRender()" style="${state.gFit?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Fit the whole timeline on screen"><span class="ms text-[16px]">fit_screen</span>Fit</button>
-      <button class="btn btn-ghost btn-sm" onclick="state.gPan=!state.gPan; render()" style="${state.gPan?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Pan: drag the timeline to scroll (click-to-edit is off while panning)"><span class="ms text-[16px]">pan_tool</span>Pan</button>
-      <button class="btn btn-ghost btn-sm" onclick="document.getElementById('todayCol')?.scrollIntoView({inline:'center',block:'nearest'})"><span class="ms text-[16px]">today</span>Today</button>
-      ${fsBtn}`:`<span class="text-xs text-white/40">Timeline hidden — task list only</span>${fsBtn}`}
     </div>
-    ${tl?`<div class="flex items-center flex-wrap gap-y-1 mb-1">${legend}</div>
-    <div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">${state.gPan?'pan_tool':'touch_app'}</span> ${state.gPan?'Pan on — drag the timeline to scroll around.':'Click a day cell to add/remove days · drag the dividers to resize.'}</div>`:''}
+    ${tl?`<div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">${state.gPan?'pan_tool':'touch_app'}</span> ${state.gPan?'Pan on — drag the timeline to scroll around.':'Click a day cell to add/remove days · drag the dividers to resize.'}</div>`:''}
     <div class="gpanes">
       <div class="gleft ${tl?'':'gfull-left'}" id="ganttLeft" ${tl?'onwheel="ganttWheel(event)"':''} style="${tl?`width:${leftW}px; min-width:${leftW}px;`:'width:100%;'} height:${vh}; --gw-task:${nameW}px">
         <table class="gantt gleft-tbl">
@@ -766,6 +784,8 @@ const STATUS=[
 function taskStatus(t){ return t.status||'todo'; }
 function statusMeta(id){ return STATUS.find(s=>s.id===id)||STATUS[0]; }
 function setTaskStatus(tid,st){ const p=activeProject(); const t=p.tasks[tid]; if(!t)return; pushUndo(); t.status=st; render(); afterRender(); saveActive(); }
+function gSearchInput(v){ state.gSearch=v; render(); const el=document.getElementById('gSearchBox'); if(el){ el.focus(); try{ el.setSelectionRange(v.length,v.length); }catch(e){} } }
+function laSearchInput(v){ state.laSearch=v; render(); const el=document.getElementById('laSearchBox'); if(el){ el.focus(); try{ el.setSelectionRange(v.length,v.length); }catch(e){} } }
 function cycleStatus(tid){ const order=['todo','doing','done']; const cur=taskStatus(activeProject().tasks[tid]); setTaskStatus(tid, order[(order.indexOf(cur)+1)%3]); }
 function orderedTaskIds(){ const p=activeProject(); const out=[]; sectionList(p).forEach(s=>tasksOf(p,s.id).forEach(t=>out.push(t.id))); return out; }
 function bubbleClick(tid, shift){
@@ -823,13 +843,14 @@ function lookAheadView(p){
   const today=fmtYMD(new Date());
   let wkStart=weekMonday(today); for(let i=0;i<state.laOffset;i++) wkStart=addDays(wkStart,7);
   const DW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const lq=(state.laSearch||'').trim().toLowerCase();
   let weeks='';
   for(let w=0; w<state.laWeeks; w++){
     const ws=addDays(wkStart, w*7);
     const days=[]; for(let i=0;i<7;i++) days.push(addDays(ws,i));
     const cols=days.map((d,i)=>{
       const hol=isHoliday(d,state.holidays);
-      const chips=tasksOnDay(p,d).map(t=>{
+      const chips=tasksOnDay(p,d).filter(t=> !lq || (t.name||'').toLowerCase().includes(lq) || ((state.companies[t.companyId]||{}).name||'').toLowerCase().includes(lq)).map(t=>{
         const c=state.companies[t.companyId]||{color:'#888',letter:'?'}; const done=taskStatus(t)==='done'; const st=statusMeta(taskStatus(t));
         return `<div class="la-chip" style="border-left:3px solid ${c.color};${done?'opacity:.55':''}" onclick="openTaskQuick('${t.tid}')" title="${esc(t.name)} · ${esc(c.name)} · ${st.label} (click to edit)">
           <span class="codot" style="width:15px;height:15px;font-size:8px;background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span>
@@ -850,8 +871,9 @@ function lookAheadView(p){
       <button class="icobtn" title="Later" onclick="state.laOffset++; render()"><span class="ms">chevron_right</span></button>
       <span class="text-xs text-white/45 ml-2">Showing</span>
       <select class="fld" onchange="state.laWeeks=+this.value; render()">${[2,3,4,6].map(n=>`<option value="${n}" ${n===state.laWeeks?'selected':''}>${n} weeks</option>`).join('')}</select>
-      <span class="text-xs text-white/35 ml-auto">Tap a task to edit days, crew, or status</span>
+      <div class="srch ml-auto"><span class="ms srch-i">search</span><input id="laSearchBox" class="fld srch-in" style="width:170px" placeholder="Find a task…" value="${esc(state.laSearch||'')}" oninput="laSearchInput(this.value)">${state.laSearch?`<span class="ms srch-x" onclick="laSearchInput('')">close</span>`:''}</div>
     </div>
+    ${lq?`<div class="text-xs text-white/45 mb-2">Showing tasks matching “${esc(state.laSearch)}” — <span class="cursor-pointer underline" onclick="laSearchInput('')">clear</span></div>`:''}
     ${weeks}`;
 }
 
@@ -883,21 +905,26 @@ function crewView(p){
   // per-crew task groups
   const groups=companyList().filter(c=>wl[c.id]).sort((a,b)=>wl[b.id]-wl[a.id]).map(c=>{
     const tks=Object.entries(p.tasks).filter(([,t])=>t.companyId===c.id).map(([tid,t])=>({tid,...t,r:state.resolved[tid]})).filter(x=>x.r).sort((a,b)=>a.r.start.localeCompare(b.r.start));
-    const rows=tks.map(t=>{ const sec=p.sections[t.sectionId]?.name||''; const st=statusMeta(taskStatus(t));
+    const doneN=tks.filter(t=>taskStatus(t)==='done').length;
+    const hidden=!!state.crewHide[c.id];
+    const rows=hidden?'':tks.map(t=>{ const sec=p.sections[t.sectionId]?.name||''; const st=statusMeta(taskStatus(t)); const done=taskStatus(t)==='done';
       return `<div class="flex items-center gap-2 px-2 py-1 text-sm border-b border-white/5">
-        <span class="ms text-[15px]" style="color:${st.color}">${st.icon}</span>
-        <span class="flex-1 truncate">${esc(t.name)} <span class="text-white/35 text-xs">· ${esc(sec)}</span></span>
+        <button class="crewbub" style="color:${st.color}" title="${esc(st.label)} — click to advance · shift-click to mark a range" onclick="event.stopPropagation(); bubbleClick('${t.tid}', event.shiftKey)"><span class="ms text-[16px]">${st.icon}</span></button>
+        <span class="flex-1 truncate ${done?'line-through text-white/45':''}">${esc(t.name)} <span class="text-white/35 text-xs">· ${esc(sec)}</span></span>
         <span class="mono text-xs text-white/55">${fmtMD(t.r.start)}–${fmtMD(t.r.finish)}</span></div>`;}).join('');
     return `<div class="card overflow-hidden">
-      <div class="flex items-center gap-2 px-3 py-2" style="background:rgba(255,255,255,.03)">
+      <div class="flex items-center gap-2 px-3 py-2 cursor-pointer select-none" style="background:rgba(255,255,255,.03)" onclick="state.crewHide['${c.id}']=!state.crewHide['${c.id}']; render(); afterRender()" title="${hidden?'Show':'Hide'} ${esc(c.name)} tasks">
+        <span class="ms text-[18px] text-white/45" style="transition:transform .15s;transform:rotate(${hidden?-90:0}deg)">expand_more</span>
         <span class="codot" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span>
         <span class="display font-semibold flex-1">${esc(c.name)}</span>
+        <span class="text-xs text-white/45 mr-2">${doneN}/${tks.length} done</span>
         <span class="lcaps">${wl[c.id]} working days</span></div>
       ${rows}</div>`;
   }).join('');
   return `
     <div class="card p-3 mb-3"><div class="lcaps mb-2">Workload — working days per crew</div><div style="height:230px"><canvas id="crewChart"></canvas></div></div>
     <div class="card p-3 mb-3"><div class="lcaps mb-2">Crew conflicts</div><div class="space-y-1.5">${confCards}</div></div>
+    <div class="flex items-center gap-2 mb-2"><div class="lcaps">Tasks by crew</div><span class="text-xs text-white/35">— click a status bubble to mark done · click a crew header to show/hide</span></div>
     <div class="grid md:grid-cols-2 gap-3 mb-5">${groups}</div>
     <div class="display font-semibold text-base mb-2 flex items-center gap-2"><span class="ms" style="color:var(--blue)">tune</span>Crew settings <span class="text-xs text-white/40 font-normal">— companies, holidays, and how long each crew's tasks take</span></div>
     ${settingsView(p)}`;

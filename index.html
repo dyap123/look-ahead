@@ -74,16 +74,28 @@
   .gpanes{ display:flex; align-items:stretch; }
   .gleft{ flex:none; overflow:hidden; }
   .gleft-tbl{ width:100%; table-layout:fixed; }
-  .gleft-tbl .l-task{ width:var(--gw-task,156px); overflow:hidden; text-overflow:ellipsis; }
-  .gleft-tbl .l-start,.gleft-tbl .l-finish{ width:54px; }
-  .gleft-tbl .l-days{ width:36px; text-align:center; }
-  .gleft-tbl .l-co{ width:52px; }
+  .gleft-tbl td{ padding:0 2px; }
+  .gleft-tbl .l-bub{ width:30px; text-align:center; padding:0; }
+  .gleft-tbl .l-task{ width:var(--gw-task,156px); }
+  .gleft-tbl .l-days{ width:46px; }
+  .gleft-tbl .l-co{ width:118px; }
+  .gleft-tbl .l-act{ width:88px; }
+  .gleft.gfull-left .gleft-tbl .l-task{ width:auto; }
+  .tinp{ width:100%; background:transparent; border:1px solid transparent; border-radius:4px; color:var(--on); padding:4px 6px; font-size:13px; }
+  .tinp:hover{ border-color:var(--outline-v); background:rgba(255,255,255,.03); }
+  .tinp:focus{ outline:none; border-color:var(--primary); background:rgba(255,255,255,.05); }
+  input[type=number].tinp{ -moz-appearance:textfield; appearance:textfield; text-align:center; }
+  input[type=number].tinp::-webkit-inner-spin-button,input[type=number].tinp::-webkit-outer-spin-button{ -webkit-appearance:none; margin:0; }
+  .secname-g{ background:transparent; border:1px solid transparent; color:var(--on); font-family:'Saira',sans-serif; font-weight:600; font-size:14px; padding:3px 6px; border-radius:4px; min-width:0; }
+  .secname-g:hover{ border-color:var(--outline-v); background:rgba(255,255,255,.03); }
+  .secname-g:focus{ outline:none; border-color:var(--primary); }
   .gright{ flex:1 1 0; min-width:0; overflow:auto; }
-  .gdivider{ flex:none; width:7px; cursor:col-resize; background:rgba(255,255,255,.06); }
+  .gright.canpan{ cursor:grab; } .gright.panning{ cursor:grabbing; }
+  .gdivider{ flex:none; width:4px; cursor:col-resize; background:rgba(255,255,255,.06); }
   .gdivider:hover,.gdivider.dragging{ background:var(--blue); }
-  .splitdiv{ flex:none; width:8px; align-self:stretch; margin:0 4px; cursor:col-resize; border-radius:3px; background:rgba(255,255,255,.07); }
+  .splitdiv{ flex:none; width:4px; align-self:stretch; margin:0 3px; cursor:col-resize; border-radius:3px; background:rgba(255,255,255,.07); }
   .splitdiv:hover,.splitdiv.dragging{ background:var(--blue); }
-  .gantt tbody tr{ height:27px; }
+  .gantt tbody tr{ height:33px; }
   /* sticky headers within each pane's own scroll, sticky section bands below */
   .gleft-tbl thead th{ position:sticky; top:0; z-index:5; background:#0f1722; height:48px; vertical-align:middle; }
   .gright-tbl thead tr:first-child th{ position:sticky; top:0; z-index:5; background:#0f1722; }
@@ -91,7 +103,7 @@
   .gright-tbl .m-head{ height:22px; }
   .gantt .wknd{ background:rgba(137,148,130,.12); }
   .gantt .hol{ background:rgba(255,180,171,.14); }
-  .gantt .secband td{ background:#16243a; color:#dbe1ff; font-weight:700; padding:5px 10px; height:28px; position:sticky; top:48px; z-index:4; border-left:3px solid var(--blue-c); }
+  .gantt .secband td{ background:#16243a; color:#dbe1ff; font-weight:700; padding:3px 6px; height:38px; position:sticky; top:48px; z-index:4; border-left:3px solid var(--blue-c); }
   .gantt .today{ box-shadow:inset 2px 0 0 var(--blue); }
   .gantt td.gcell{ cursor:pointer; }
   .gantt td.gcell:hover{ outline:2px solid var(--blue); outline-offset:-2px; }
@@ -144,7 +156,7 @@ const state = {
   nav: 'schedule',
   companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
   resolved: {}, online: false, showPreview: true, seeded: false, collapsed: {}, lastTask: null,
-  view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company', gFull: false, gFit: false, buildLayout: 'split',
+  view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company', gFull: false, gFit: false, showTimeline: true, gPan: false,
   ganttNameW: (parseInt(localStorage.getItem('la_gnameW'))||156),
   editorW: (parseInt(localStorage.getItem('la_editorW'))||470),
   tools: { assets:{}, config:{}, loaded:false, q:'', status:'all', tab:'dash', groupBy:'category' },
@@ -429,6 +441,7 @@ function render(){
   if(typeof afterRender==='function') afterRender();
 }
 function setNav(id){ state.nav=id; render(); if(id==='attendance') ensureAttendance(); if(id==='tools') ensureTools(); if(id==='infoflow') ensureInfoflow(); }
+function goHome(){ state.nav='schedule'; state.view='build'; render(); afterRender(); window.scrollTo(0,0); }
 function header(){
   const p=activeProject();
   const projOpts=Object.entries(state.projects).map(([id,pr])=>`<option value="${id}" ${id===activeId()?'selected':''}>${esc(pr.name)}</option>`).join('');
@@ -436,7 +449,7 @@ function header(){
   return `
   <div class="sticky top-0 z-30" style="background:linear-gradient(180deg,#101a28,#0a1017); border-bottom:1px solid var(--outline-v)">
     <div class="max-w-[1500px] mx-auto px-4 py-2.5 flex items-center gap-3 flex-wrap">
-      <div class="flex items-center gap-2.5">
+      <div class="flex items-center gap-2.5 cursor-pointer" onclick="goHome()" title="Home — Schedule">
         <div class="wordmark text-xl text-white" style="line-height:1">SUPER<span style="color:#4a9bf0">YAP</span></div>
         <span class="lcaps text-white/30 hidden md:block" style="font-size:8.5px;line-height:1.15;letter-spacing:.18em">Superintendent<br>Suite</span>
       </div>
@@ -469,39 +482,28 @@ function builderView(p){
   else if(state.view==='crew') sub=crewView(p);
   else if(state.view==='progress') sub=progressView(p);
   else sub=buildView(p);
-  const wide = state.view==='build' && state.buildLayout==='split';
-  return `<div class="${wide?'max-w-[1840px]':'max-w-[1500px]'} mx-auto px-4 py-4">${viewSwitcher()}${sub}</div>`;
+  const wide = state.view==='build';
+  return `<div class="${wide?'max-w-[1900px]':'max-w-[1500px]'} mx-auto px-4 py-4">${viewSwitcher()}${sub}</div>`;
 }
 function buildView(p){
-  const split = state.buildLayout==='split';
+  const secs=sectionList(p);
   const toolbar = `
     <div class="flex items-center gap-2 mb-3 flex-wrap">
       <button class="btn btn-ghost" onclick="openInsertCycle()"><span class="ms text-[18px]">library_add</span>Insert Cycle</button>
       <button class="btn btn-ghost" onclick="addSection()"><span class="ms text-[18px]">add</span>Add Section</button>
       <button class="btn btn-ghost" onclick="openImport()" title="Import a CSV, Excel, or PDF schedule"><span class="ms text-[18px]">upload_file</span>Import</button>
-      <button class="btn btn-ghost btn-sm" onclick="toggleAllCollapse()" title="Collapse or expand all sections"><span class="ms text-[16px]">${allCollapsed()?'unfold_more':'unfold_less'}</span>${allCollapsed()?'Expand all':'Collapse all'}</button>
+      <button class="btn btn-ghost btn-sm" onclick="toggleAllCollapse()" title="Collapse or expand all sections"><span class="ms text-[16px]">${allCollapsed()?'unfold_more':'unfold_less'}</span><span class="hidden md:inline">${allCollapsed()?'Expand all':'Collapse all'}</span></button>
       <div class="flex items-center gap-1 ml-1">
         <button class="icobtn ${undoStack.length?'':'opacity-30'}" title="Undo (⌘Z)" onclick="undo()"><span class="ms text-[18px]">undo</span></button>
         <button class="icobtn ${redoStack.length?'':'opacity-30'}" title="Redo (⌘⇧Z)" onclick="redo()"><span class="ms text-[18px]">redo</span></button>
       </div>
       <div class="ml-auto flex items-center gap-2 text-xs text-white/50">
         <span class="ms text-[16px]">event</span> Anchor ${esc(p.startDate)}
-        <div class="seg ml-1">
-          <div class="tabbtn ${split?'on':''}" title="Editor left, Gantt right" onclick="state.buildLayout='split'; render(); afterRender()"><span class="ms text-[16px]">vertical_split</span></div>
-          <div class="tabbtn ${!split?'on':''}" title="Editor on top, Gantt below" onclick="state.buildLayout='stack'; render(); afterRender()"><span class="ms text-[16px]">view_agenda</span></div>
-        </div>
-        ${!split?`<button class="btn btn-ghost btn-sm" onclick="state.showPreview=!state.showPreview; render()">${state.showPreview?'Hide':'Show'} preview</button>`:''}
+        <button class="btn btn-ghost btn-sm" onclick="state.showTimeline=!state.showTimeline; render(); afterRender()" title="Show or hide the timeline"><span class="ms text-[16px]">${state.showTimeline?'calendar_view_month':'view_list'}</span>${state.showTimeline?'Hide timeline':'Show timeline'}</button>
       </div>
     </div>`;
-  if(split){
-    return `${toolbar}
-      <div class="flex flex-col xl:flex-row items-start" id="splitWrap" style="--ew:${state.editorW||470}px">
-        <div class="split-editor w-full xl:w-[var(--ew)] xl:flex-none min-w-0">${editorPanel(p, true)}</div>
-        <div class="splitdiv hidden xl:block" onmousedown="startSplitResize(event)" ontouchstart="startSplitResize(event)" title="Drag to resize the task list vs the Gantt"></div>
-        <div class="xl:flex-1 w-full min-w-0 xl:sticky" style="top:58px">${ganttPanel(p)}</div>
-      </div>`;
-  }
-  return `${toolbar}${editorPanel(p, false)}${state.showPreview ? `<div class="mt-5">${ganttPanel(p)}</div>` : ''}`;
+  if(!secs.length) return `${toolbar}<div class="card p-8 text-center text-white/50">No sections yet. Click <b>Insert Cycle</b> to drop in a full foundation sequence, or <b>Add Section</b>.</div>`;
+  return `${toolbar}${ganttPanel(p)}`;
 }
 
 function editorPanel(p, compact){
@@ -605,42 +607,68 @@ function ganttPanel(p){
     ? STATUS.map(s=>`<span class="chip" style="background:${s.color};color:${textOn(s.color)}">&nbsp;</span><span class="text-xs text-white/60 mr-3">${s.label}</span>`).join('')
     : companyList().map(c=>`<span class="chip" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span><span class="text-xs text-white/60 mr-3">${esc(c.name)}</span>`).join('');
 
+  const tl=state.showTimeline;
+  const coAll=companyList();
+  const coOptsFor=t=>coAll.map(c=>`<option value="${c.id}" ${c.id===t.companyId?'selected':''}>${esc(c.name)}</option>`).join('');
   let leftBody='', rightBody='';
   sectionList(p).forEach(s=>{
     const tks=tasksOf(p,s.id).filter(t=> filt==='all' || t.companyId===filt);
     if(!tks.length) return;
-    leftBody+=`<tr class="secband"><td colspan="5">${esc(s.name)}</td></tr>`;
+    const collapsed=!!state.collapsed[s.id];
+    const doneN=tks.filter(t=>taskStatus(t)==='done').length;
+    leftBody+=`<tr class="secband"><td colspan="5"><div class="flex items-center gap-0.5">
+      <button class="icobtn" title="${collapsed?'Expand':'Collapse'}" onclick="toggleCollapse('${s.id}')" style="color:var(--blue)"><span class="ms text-[18px]">${collapsed?'chevron_right':'expand_more'}</span></button>
+      <input class="secname-g flex-1" value="${esc(s.name)}" onchange="renameSection('${s.id}',this.value)">
+      <span class="lcaps mr-1" style="font-size:9px" title="Tasks done">${doneN>0?doneN+'/'+tks.length:tks.length}</span>
+      <button class="icobtn" title="Add task" onclick="addTask('${s.id}')"><span class="ms text-[17px]">add</span></button>
+      <button class="icobtn" title="Duplicate section" onclick="duplicateSection('${s.id}')"><span class="ms text-[15px]">content_copy</span></button>
+      <button class="icobtn" title="Move up" onclick="moveSection('${s.id}',-1)"><span class="ms text-[15px]">arrow_upward</span></button>
+      <button class="icobtn" title="Move down" onclick="moveSection('${s.id}',1)"><span class="ms text-[15px]">arrow_downward</span></button>
+      <button class="icobtn" title="Delete section" onclick="delSection('${s.id}')"><span class="ms text-[15px]">delete</span></button>
+    </div></td></tr>`;
     rightBody+=`<tr class="secband"><td colspan="${days.length}"></td></tr>`;
+    if(collapsed) return;
     tks.forEach(t=>{
       const r=state.resolved[t.id]||{}; const c=state.companies[t.companyId]||{color:'#444',letter:'?'};
       const fill = byStatus ? statusMeta(taskStatus(t)).color : c.color;
+      const stt=statusMeta(taskStatus(t)); const done=taskStatus(t)==='done';
       leftBody+=`<tr>
-        <td class="lab l-task" title="${esc(t.name)}">${esc(t.name)}</td>
-        <td class="lab mono l-start text-white/60">${esc(fmtMD(r.start))}</td>
-        <td class="lab mono l-finish text-white/60">${esc(fmtMD(r.finish))}</td>
-        <td class="lab l-days text-center text-white/60">${t.days}</td>
-        <td class="lab l-co"><span class="chip" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span></td>
+        <td class="l-bub"><button class="statusdot" onclick="bubbleClick('${t.id}', event.shiftKey)" style="color:${stt.color}" title="${stt.label} — click to advance · shift-click a range"><span class="ms text-[19px]">${stt.icon}</span></button></td>
+        <td class="l-task"><input class="tinp" value="${esc(t.name)}" style="${done?'text-decoration:line-through;opacity:.55':''}" onchange="changeTaskField('${t.id}','name',this.value)"></td>
+        <td class="l-days"><input class="tinp mono" type="number" min="1" value="${t.days}" title="Working days" onchange="changeTaskField('${t.id}','days',this.value)"></td>
+        <td class="l-co"><div class="flex items-center gap-1"><span class="codot" style="width:18px;height:18px;min-width:18px;font-size:9px;background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span><select class="tinp flex-1" style="padding:3px 2px" onchange="changeTaskField('${t.id}','companyId',this.value)">${coOptsFor(t)}</select></div></td>
+        <td class="l-act"><div class="flex items-center justify-end gap-0.5">
+          <div class="flex flex-col items-center">
+            <button class="icobtn" style="width:15px;height:11px" title="Move up" onclick="moveTask('${t.id}',-1)"><span class="ms" style="font-size:12px">expand_less</span></button>
+            <button class="icobtn" style="width:15px;height:11px" title="Move down" onclick="moveTask('${t.id}',1)"><span class="ms" style="font-size:12px">expand_more</span></button>
+          </div>
+          <button class="icobtn" title="Dates / chain / pour link" onclick="openTaskQuick('${t.id}')"><span class="ms text-[16px]">tune</span></button>
+          <button class="icobtn" title="Delete task" onclick="delTask('${t.id}')"><span class="ms text-[16px]">close</span></button>
+        </div></td>
       </tr>`;
-      const cells=days.map(d=>{
-        const within = r.start && d>=r.start && d<=r.finish;
-        const canClick = r.start && d>=r.start;
-        const oc = canClick ? `onclick="ganttSetDay('${t.id}','${d}')"` : '';
-        const gc = canClick ? 'gcell' : '';
-        const tdc = d===today?'today':'';
-        if(within && isWorkday(d,state.holidays)) return `<td class="day ${tdc} ${gc}" ${oc} style="background:${fill};color:${textOn(fill)}">${esc(c.letter)}</td>`;
-        const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':'';
-        return `<td class="day ${cl} ${tdc} ${gc}" ${oc}></td>`;
-      }).join('');
-      rightBody+=`<tr>${cells}</tr>`;
+      if(tl){
+        const cells=days.map(d=>{
+          const within = r.start && d>=r.start && d<=r.finish;
+          const canClick = r.start && d>=r.start && !state.gPan;
+          const oc = canClick ? `onclick="ganttSetDay('${t.id}','${d}')"` : '';
+          const gc = canClick ? 'gcell' : '';
+          const tdc = d===today?'today':'';
+          if(within && isWorkday(d,state.holidays)) return `<td class="day ${tdc} ${gc}" ${oc} style="background:${fill};color:${textOn(fill)}">${esc(c.letter)}</td>`;
+          const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':'';
+          return `<td class="day ${cl} ${tdc} ${gc}" ${oc}></td>`;
+        }).join('');
+        rightBody+=`<tr>${cells}</tr>`;
+      }
     });
   });
-  const coOpts=`<option value="all">All crews</option>`+companyList().map(c=>`<option value="${c.id}" ${c.id===filt?'selected':''}>${esc(c.name)}</option>`).join('');
-  const nameW=state.ganttNameW||156; const leftW=nameW+196;
-  const vh=state.gFull?'calc(100vh - 150px)':(state.view==='build'&&state.buildLayout==='split'?'calc(100vh - 175px)':'62vh');
+  const coOpts=`<option value="all">All crews</option>`+coAll.map(c=>`<option value="${c.id}" ${c.id===filt?'selected':''}>${esc(c.name)}</option>`).join('');
+  const nameW=state.ganttNameW||200; const leftW=nameW+282;
+  const vh=state.gFull?'calc(100vh - 150px)':'70vh';
+  const fsBtn=`<button class="icobtn ml-auto" title="${state.gFull?'Exit fullscreen (Esc)':'Fullscreen'}" onclick="toggleGanttFull()"><span class="ms text-[18px]">${state.gFull?'fullscreen_exit':'fullscreen'}</span></button>`;
   return `<div class="card gantt-card p-3 ${state.gFull?'gfull':''}" id="ganttCard">
     <div class="flex items-center gap-2 mb-2 flex-wrap">
-      <span class="lcaps" style="font-size:10px">Gantt</span>
-      <div class="flex items-center gap-0.5">
+      <span class="lcaps" style="font-size:10px">Schedule</span>
+      ${tl?`<div class="flex items-center gap-0.5">
         <button class="icobtn" title="Zoom out" onclick="state.gz=Math.max(0.6,+(state.gz-0.2).toFixed(2)); render()"><span class="ms text-[18px]">zoom_out</span></button>
         <button class="icobtn" title="Zoom in" onclick="state.gz=Math.min(2,+(state.gz+0.2).toFixed(2)); render()"><span class="ms text-[18px]">zoom_in</span></button>
       </div>
@@ -648,26 +676,27 @@ function ganttPanel(p){
       <select class="fld" title="Color bars by" onchange="state.gColor=this.value; render()">
         <option value="company" ${!byStatus?'selected':''}>Color by crew</option>
         <option value="status" ${byStatus?'selected':''}>Color by status</option></select>
-      <button class="btn btn-ghost btn-sm ${state.gFit?'on-fit':''}" title="Fit the whole timeline on screen" onclick="state.gFit=!state.gFit; render(); afterRender()" style="${state.gFit?'background:rgba(47,128,237,.16);color:var(--blue)':''}"><span class="ms text-[16px]">fit_screen</span>Fit</button>
+      <button class="btn btn-ghost btn-sm" onclick="state.gFit=!state.gFit; render(); afterRender()" style="${state.gFit?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Fit the whole timeline on screen"><span class="ms text-[16px]">fit_screen</span>Fit</button>
+      <button class="btn btn-ghost btn-sm" onclick="state.gPan=!state.gPan; render()" style="${state.gPan?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Pan: drag the timeline to scroll (click-to-edit is off while panning)"><span class="ms text-[16px]">pan_tool</span>Pan</button>
       <button class="btn btn-ghost btn-sm" onclick="document.getElementById('todayCol')?.scrollIntoView({inline:'center',block:'nearest'})"><span class="ms text-[16px]">today</span>Today</button>
-      <button class="icobtn ml-auto" title="${state.gFull?'Exit fullscreen (Esc)':'Fullscreen'}" onclick="toggleGanttFull()"><span class="ms text-[18px]">${state.gFull?'fullscreen_exit':'fullscreen'}</span></button>
+      ${fsBtn}`:`<span class="text-xs text-white/40">Timeline hidden — task list only</span>${fsBtn}`}
     </div>
-    <div class="flex items-center flex-wrap gap-y-1 mb-1">${legend}</div>
-    <div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">touch_app</span> Click a day cell to add or remove days · drag the divider to resize the task list.</div>
+    ${tl?`<div class="flex items-center flex-wrap gap-y-1 mb-1">${legend}</div>
+    <div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">${state.gPan?'pan_tool':'touch_app'}</span> ${state.gPan?'Pan on — drag the timeline to scroll around.':'Click a day cell to add/remove days · drag the dividers to resize.'}</div>`:''}
     <div class="gpanes">
-      <div class="gleft" id="ganttLeft" onwheel="ganttWheel(event)" style="width:${leftW}px; min-width:${leftW}px; height:${vh}; --gw-task:${nameW}px">
+      <div class="gleft ${tl?'':'gfull-left'}" id="ganttLeft" ${tl?'onwheel="ganttWheel(event)"':''} style="${tl?`width:${leftW}px; min-width:${leftW}px;`:'width:100%;'} height:${vh}; --gw-task:${nameW}px">
         <table class="gantt gleft-tbl">
-          <thead><tr><th class="lab l-task">Task</th><th class="lab l-start">Start</th><th class="lab l-finish">Finish</th><th class="lab l-days">Days</th><th class="lab l-co">Co.</th></tr></thead>
+          <thead><tr><th class="l-bub"></th><th class="lab l-task">Task</th><th class="lab l-days">Days</th><th class="lab l-co">Crew</th><th class="lab l-act"></th></tr></thead>
           <tbody>${leftBody}</tbody>
         </table>
       </div>
-      <div class="gdivider" title="Drag to resize the task list" onmousedown="startColResize(event)" ontouchstart="startColResize(event)"></div>
-      <div class="gright" id="ganttRight" style="height:${vh}; ${state.gFit?'overflow-x:hidden':''}" onscroll="syncGanttScroll()">
+      ${tl?`<div class="gdivider" title="Drag to resize the task list" onmousedown="startColResize(event)" ontouchstart="startColResize(event)"></div>
+      <div class="gright ${state.gPan?'canpan':''}" id="ganttRight" style="height:${vh}; ${state.gFit?'overflow-x:hidden':''}" onscroll="syncGanttScroll()" ${state.gPan?'onmousedown="startPan(event)"':''}>
         <table class="gantt gright-tbl ${state.gFit?'fit':''}" data-days="${days.length}" style="--dayw:${cellW}px">
           <thead><tr>${monthRow}</tr><tr>${dayHead}</tr></thead>
           <tbody>${rightBody}</tbody>
         </table>
-      </div>
+      </div>`:''}
     </div>
   </div>`;
 }
@@ -683,6 +712,15 @@ function startSplitResize(e){
   document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); document.addEventListener('touchmove',move,{passive:false}); document.addEventListener('touchend',up);
 }
 function ganttWheel(e){ const r=document.getElementById('ganttRight'); if(r){ r.scrollTop+=e.deltaY; if(e.cancelable) e.preventDefault(); } }
+function startPan(e){
+  if(e.button!==undefined && e.button!==0) return;
+  const r=document.getElementById('ganttRight'); if(!r) return;
+  const sx=e.clientX, sy=e.clientY, sl=r.scrollLeft, st=r.scrollTop;
+  r.classList.add('panning');
+  function move(ev){ r.scrollLeft=sl-(ev.clientX-sx); r.scrollTop=st-(ev.clientY-sy); syncGanttScroll(); }
+  function up(){ r.classList.remove('panning'); document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); }
+  document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); e.preventDefault();
+}
 function toggleGanttFull(){ state.gFull=!state.gFull; render(); afterRender(); }
 function startColResize(e){
   e.preventDefault(); e.stopPropagation();
@@ -690,7 +728,7 @@ function startColResize(e){
   const startX=(e.touches?e.touches[0].clientX:e.clientX);
   const startW=state.ganttNameW||156;
   const left=document.getElementById('ganttLeft');
-  function move(ev){ const x=(ev.touches?ev.touches[0].clientX:ev.clientX); const w=Math.max(80, Math.min(440, Math.round(startW+(x-startX)))); state.ganttNameW=w; if(left){ left.style.width=(w+196)+'px'; left.style.minWidth=(w+196)+'px'; left.style.setProperty('--gw-task', w+'px'); } if(ev.cancelable) ev.preventDefault(); }
+  function move(ev){ const x=(ev.touches?ev.touches[0].clientX:ev.clientX); const w=Math.max(90, Math.min(480, Math.round(startW+(x-startX)))); state.ganttNameW=w; if(left){ left.style.width=(w+282)+'px'; left.style.minWidth=(w+282)+'px'; left.style.setProperty('--gw-task', w+'px'); } if(ev.cancelable) ev.preventDefault(); }
   function up(){ handle&&handle.classList.remove('dragging');
     document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up);
     document.removeEventListener('touchmove',move); document.removeEventListener('touchend',up);

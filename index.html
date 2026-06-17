@@ -186,7 +186,7 @@ const state = {
   nav: 'schedule',
   companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
   resolved: {}, online: false, showPreview: true, seeded: false, collapsed: {}, lastTask: null,
-  view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company', gFull: false, gFit: false, showTimeline: true, gPan: false, gSearch: '', laSearch: '', crewHide: {},
+  view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company', gFull: false, gFit: false, showTimeline: true, gPan: false, gSearch: '', laSearch: '', crewHide: {}, dirty: false, pending: 0,
   ganttNameW: (parseInt(localStorage.getItem('la_gnameW'))||156),
   editorW: (parseInt(localStorage.getItem('la_editorW'))||470),
   tools: { assets:{}, config:{}, loaded:false, q:'', status:'all', tab:'dash', groupBy:'category' },
@@ -360,24 +360,36 @@ function loadLocal(){
   if(!Object.keys(state.holidays).length) state.holidays={...DEFAULT_HOLIDAYS};
   try{ state.collapsed=JSON.parse(localStorage.getItem('la_collapsed')||'{}'); }catch(e){}
 }
-let saveTimer=null;
+/* Edits save instantly to this device (localStorage) and mark the schedule "unsaved".
+   The cloud (Firebase) write happens on manual Save / ⌘S, and auto every 5 min once >5 changes pile up. */
 function saveActive(){
-  saveLocal(); setSaveStatus('saving');
-  if(!db){ setSaveStatus('saved'); return; }
-  clearTimeout(saveTimer);
-  saveTimer=setTimeout(()=>{
-    const pid=activeId(); const w=(pid&&state.projects[pid])? fb.set('projects/'+pid, state.projects[pid]) : Promise.resolve();
-    Promise.resolve(w).then(()=>fb.set('meta', state.meta)).then(()=>setSaveStatus('saved')).catch(()=>setSaveStatus('saved'));
-  }, 450);
+  saveLocal();
+  state.dirty=true; state.pending=(state.pending||0)+1;
+  try{ localStorage.setItem('la_dirty','1'); }catch(e){}   // so a reload knows local is ahead of cloud
+  refreshSaveUI();
 }
-/* ----- save status indicator ----- */
-function setSaveStatus(s){ state.saveState={ status:s, at: s==='saved'?Date.now():(state.saveState&&state.saveState.at||0) }; const el=document.getElementById('saveStatus'); if(el) el.outerHTML=saveStatusEl(); }
+function saveNow(opts){
+  opts=opts||{};
+  saveLocal();
+  if(!db || !state.online){ if(opts.manual) toast('Saved on this device — will sync when online','ok'); refreshSaveUI(); return; }
+  if(!state.dirty && !opts.force){ if(opts.manual) toast('All changes saved','ok'); refreshSaveUI(); return; }
+  setSaveStatus('saving');
+  const pid=activeId(); const w=(pid&&state.projects[pid])? fb.set('projects/'+pid, state.projects[pid]) : Promise.resolve();
+  Promise.resolve(w).then(()=>fb.set('meta', state.meta)).then(()=>{
+    state.dirty=false; state.pending=0; try{ localStorage.removeItem('la_dirty'); }catch(e){}
+    setSaveStatus('saved'); if(opts.manual) toast('Saved to cloud','ok'); else if(opts.auto) toast('Auto-saved','ok');
+  }).catch(()=>{ setSaveStatus('saved'); if(opts.manual) toast('Save failed — kept on device','warn'); });
+}
+/* ----- save status / button (top-right) ----- */
+function refreshSaveUI(){ const el=document.getElementById('saveStatus'); if(el) el.outerHTML=saveStatusEl(); }
+function setSaveStatus(s){ state.saveState={ status:s, at: s==='saved'?Date.now():(state.saveState&&state.saveState.at||0) }; refreshSaveUI(); }
 function saveStatusEl(){
-  const s=state.saveState||{status:'saved',at:0}; let icon,txt,cls;
-  if(!state.online){ icon='cloud_off'; txt='Saved on device'; cls='text-amber-300'; }
-  else if(s.status==='saving'){ icon='sync'; txt='Saving…'; cls='text-amber-300'; }
-  else { const t=s.at? new Date(s.at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):''; icon='cloud_done'; txt='Saved'+(t?' '+t:''); cls='text-sky-300'; }
-  return `<span id="saveStatus" class="text-xs px-2 py-1 rounded-full ${cls} whitespace-nowrap" style="background:rgba(150,170,205,.1)"><span class="ms text-[14px]">${icon}</span> ${txt}</span>`;
+  const s=state.saveState||{status:'saved',at:0}; let icon,txt,btncls,cls='';
+  if(s.status==='saving'){ icon='sync'; txt='Saving…'; btncls='btn-ghost'; cls='text-amber-300'; }
+  else if(!state.online){ icon='cloud_off'; txt='On device'; btncls='btn-ghost'; cls='text-amber-300'; }
+  else if(state.dirty){ const n=state.pending||0; icon='save'; txt='Save'+(n>1?` · ${n}`:''); btncls='btn-green'; }
+  else { const t=s.at? new Date(s.at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):''; icon='cloud_done'; txt='Saved'+(t?' '+t:''); btncls='btn-ghost'; cls='text-sky-300'; }
+  return `<button id="saveStatus" class="btn ${btncls} btn-sm ${cls} whitespace-nowrap" title="Save to cloud (⌘S / Ctrl+S)" onclick="saveNow({manual:true})"><span class="ms text-[16px]">${icon}</span> ${txt}</button>`;
 }
 /* ----- undo / redo (per-schedule snapshot stack) ----- */
 let undoStack=[], redoStack=[];
@@ -399,12 +411,14 @@ async function seedIfNeeded(){
   if(!projs){ ensureActive(); await fb.set('projects/'+activeId(), activeProject()); await fb.set('meta', state.meta); }
   if(!await fb.get('infoflow/config')) await fb.set('infoflow/config', { topics:['Elevator Coordination','Mix Designs','Submittals','Permits','General'] });
 }
+let metaFirst=true, projFirst=true;
+function localAhead(){ try{ return localStorage.getItem('la_dirty')==='1'; }catch(e){ return false; } }
 function attachListeners(){
   fb.listen('companies', v=>{ if(v){ state.companies=v; saveLocal(); render(); } });
   fb.listen('holidays',  v=>{ state.holidays=v||{}; saveLocal(); recomputeActive(); render(); });
   fb.listen('templates', v=>{ if(v){ state.templates=v; saveLocal(); } });
-  fb.listen('meta',      v=>{ if(v){ state.meta=v; ensureActive(); recomputeActive(); render(); } });
-  fb.listen('projects',  v=>{ state.projects=v||{}; ensureActive(); recomputeActive(); saveLocal(); render(); });
+  fb.listen('meta',      v=>{ if(metaFirst){ metaFirst=false; if(localAhead()) return; } if(v){ state.meta=v; ensureActive(); recomputeActive(); render(); } });
+  fb.listen('projects',  v=>{ if(projFirst){ projFirst=false; if(localAhead()){ saveNow({force:true}); return; } } state.projects=v||{}; ensureActive(); recomputeActive(); saveLocal(); render(); });
   if(db) db.ref('pours-user').on('value', s=>{ state.pours=s.val()||{}; if(state.nav==='schedule') render(); });
 }
 
@@ -1123,13 +1137,13 @@ function updHoliday(d,v){ state.holidays[d]=v; saveHolidays(); }
 function delHoliday(d){ delete state.holidays[d]; saveHolidays(); recomputeActive(); render(); }
 function addHoliday(){ const d=$('#newHolDate').value; const l=$('#newHolLabel').value||'Holiday'; if(!d) return toast('Pick a date','warn'); state.holidays[d]=l; saveHolidays(); recomputeActive(); render(); }
 function updTpl(i,f,v){ if(f==='days') v=Math.max(1,parseInt(v)||1); state.templates.pileCapCycle.tasks[i][f]=v; saveTemplates(); render(); }
-function newProject(){ const name=prompt('Name this schedule:','New Schedule'); if(!name) return; pushUndo(); const pid=uid('p_'); let s=fmtYMD(new Date()); while(dow(s)!==1) s=addDays(s,1); state.projects[pid]={id:pid,name,subtitle:'Look Ahead Schedule',startDate:s,sections:{},tasks:{}}; state.meta.activeProjectId=pid; state.nav='schedule'; recomputeActive(); render(); saveActive(); toast('New schedule created'); }
-function renameProject(){ const p=activeProject(); if(!p) return; const nn=(prompt('Rename schedule:', p.name)||'').trim(); if(!nn||nn===p.name) return; p.name=nn; render(); saveActive(); toast('Schedule renamed'); }
+function newProject(){ const name=prompt('Name this schedule:','New Schedule'); if(!name) return; pushUndo(); const pid=uid('p_'); let s=fmtYMD(new Date()); while(dow(s)!==1) s=addDays(s,1); state.projects[pid]={id:pid,name,subtitle:'Look Ahead Schedule',startDate:s,sections:{},tasks:{}}; state.meta.activeProjectId=pid; state.nav='schedule'; recomputeActive(); render(); state.dirty=true; saveNow({force:true}); toast('New schedule created'); }
+function renameProject(){ const p=activeProject(); if(!p) return; const nn=(prompt('Rename schedule:', p.name)||'').trim(); if(!nn||nn===p.name) return; p.name=nn; render(); state.dirty=true; saveNow({force:true}); toast('Schedule renamed'); }
 function deleteProject(){
   const pid=activeId(); const p=activeProject(); if(!p) return;
   if(!confirm(`Delete schedule “${p.name}”? This can’t be undone.`)) return;
   delete state.projects[pid]; if(db) fb.remove('projects/'+pid);
-  ensureActive(); recomputeActive(); render(); saveActive(); toast('Schedule deleted');
+  ensureActive(); recomputeActive(); render(); state.dirty=true; saveNow({force:true}); toast('Schedule deleted');
 }
 function syncPours(){
   const p=activeProject(); const yr=Number(p.startDate.slice(0,4)); let n=0;
@@ -1919,11 +1933,18 @@ function boot(){
   render();
   document.addEventListener('keydown', e=>{
     if(e.key==='Escape' && state.gFull){ state.gFull=false; render(); return; }
-    const mod=e.metaKey||e.ctrlKey; if(!mod) return;
+    const tag=(e.target&&e.target.tagName||'').toLowerCase();
+    const typing = tag==='input'||tag==='textarea'||tag==='select'||(e.target&&e.target.isContentEditable);
+    const mod=e.metaKey||e.ctrlKey;
     const k=e.key.toLowerCase();
+    if(mod && k==='s'){ e.preventDefault(); if(document.activeElement&&document.activeElement.blur) document.activeElement.blur(); saveNow({manual:true}); return; }   // ⌘/Ctrl+S → save
+    if(!mod && !typing && k==='v' && state.nav==='schedule' && state.view==='build' && state.showTimeline){ e.preventDefault(); state.gPan=!state.gPan; if(!state.gPan) ganttCrossHide(); render(); return; }   // v → toggle Pan
+    if(!mod) return;
     if(k==='z' && state.nav==='schedule'){ e.preventDefault(); e.shiftKey?redo():undo(); }
     else if(k==='y' && state.nav==='schedule'){ e.preventDefault(); redo(); }
   });
+  setInterval(()=>{ if(state.online && state.dirty && (state.pending||0) > 5) saveNow({auto:true}); }, 5*60*1000);   // auto-save every 5 min once >5 changes pile up
+  window.addEventListener('beforeunload', e=>{ if(state.dirty && state.online) saveNow({force:true}); });           // best-effort flush on close
   let rzT=null; window.addEventListener('resize', ()=>{ clearTimeout(rzT); rzT=setTimeout(fitGantt, 120); });
 }
 document.addEventListener('DOMContentLoaded', boot);

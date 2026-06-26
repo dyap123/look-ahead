@@ -395,6 +395,7 @@ function saveStatusEl(){
 let undoStack=[], redoStack=[];
 let gScroll={left:0,top:0}, gCenteredPid=null;   // remember timeline scroll across renders; auto-center on today once per schedule
 let _gLeft=null, _gRight=null;                   // cached gantt panes (refreshed each render) so hot scroll/pan handlers skip getElementById
+let _ganttDays=null;                             // the day (YMD) per timeline column of the current render — lets day edits repaint in place
 function snapProject(){ const pid=activeId(); return { pid, data: JSON.stringify(state.projects[pid]||{}) }; }
 function pushUndo(){ if(!activeId()) return; undoStack.push(snapProject()); if(undoStack.length>60) undoStack.shift(); redoStack=[]; }
 function applySnap(s){ state.projects[s.pid]=JSON.parse(s.data); state.meta.activeProjectId=s.pid; recomputeActive(); render(); saveActive(); }
@@ -575,7 +576,7 @@ function ganttWindow(p){
   return days;
 }
 function ganttPanel(p){
-  const days=ganttWindow(p);
+  const days=ganttWindow(p); _ganttDays=days;
   const today=fmtYMD(new Date());
   const cellW=Math.max(12, Math.round(24*state.gz));
   const filt=state.gFilter, byStatus=state.gColor==='status';
@@ -617,7 +618,7 @@ function ganttPanel(p){
       leftBody+=`<tr data-tid="${t.id}" data-sid="${s.id}" data-q="${qd}">
         <td class="l-bub"><button class="statusdot" onclick="bubbleClick('${t.id}', event.shiftKey)" style="color:${stt.color}" title="${stt.label} — click to advance · shift-click a range"><span class="ms text-[19px]">${stt.icon}</span></button></td>
         <td class="l-task"><input class="tinp" value="${esc(t.name)}" style="${done?'text-decoration:line-through;opacity:.55':''}" onchange="changeTaskField('${t.id}','name',this.value)"></td>
-        <td class="l-days"><input class="tinp mono" type="number" min="1" value="${t.days}" title="Working days" onchange="changeTaskField('${t.id}','days',this.value)"></td>
+        <td class="l-days"><input class="tinp mono" type="number" min="1" value="${t.days}" title="Working days" onchange="commitDayEdit('${t.id}', Math.max(1, parseInt(this.value)||1))"></td>
         <td class="l-co"><div class="flex items-center gap-1"><span class="codot" style="width:18px;height:18px;min-width:18px;font-size:9px;background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span><select class="tinp flex-1" style="padding:3px 2px" onchange="changeTaskField('${t.id}','companyId',this.value)">${coOptsFor(t)}</select></div></td>
         <td class="l-act"><div class="flex items-center justify-end gap-0.5">
           <div class="flex flex-col items-center">
@@ -632,12 +633,11 @@ function ganttPanel(p){
         const cells=days.map(d=>{
           const within = r.start && d>=r.start && d<=r.finish;
           const canClick = r.start && d>=r.start && !state.gPan;
-          const oc = canClick ? `onclick="ganttSetDay('${t.id}','${d}')"` : '';
           const gc = canClick ? 'gcell' : '';
           const tdc = d===today?'today':'';
-          if(within && isWorkday(d,state.holidays)) return `<td class="day ${tdc} ${gc}" ${oc} style="background:${fill};color:${textOn(fill)}">${esc(c.letter)}</td>`;
+          if(within && isWorkday(d,state.holidays)) return `<td class="day ${tdc} ${gc}" data-d="${d}" style="background:${fill};color:${textOn(fill)}">${esc(c.letter)}</td>`;
           const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':'';
-          return `<td class="day ${cl} ${tdc} ${gc}" ${oc}></td>`;
+          return `<td class="day ${cl} ${tdc} ${gc}" data-d="${d}"></td>`;
         }).join('');
         rightBody+=`<tr data-tid="${t.id}" data-sid="${s.id}" data-q="${qd}">${cells}</tr>`;
       }
@@ -666,7 +666,7 @@ function ganttPanel(p){
         ${fsBtn}
       </div>
     </div>
-    ${tl?`<div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">${state.gPan?'pan_tool':'touch_app'}</span> ${state.gPan?'Pan on — drag to scroll; the crosshair lines up which trades overlap on a given day.':'Click a day cell to add/remove days · drag the dividers to resize.'}</div>`:''}
+    ${tl?`<div class="text-xs text-white/40 mb-2"><span class="ms text-[14px]" style="color:var(--blue)">${state.gPan?'pan_tool':'touch_app'}</span> ${state.gPan?'Pan on — drag to scroll; the crosshair lines up which trades overlap on a given day.':'Click a day to set the end · <b>drag across days</b> to set the duration · tap the last day to shorten by one.'}</div>`:''}
     <div class="gpanes">
       <div class="gleft ${tl?'':'gfull-left'}" id="ganttLeft" ${tl?'onwheel="ganttWheel(event)"':''} style="${tl?`width:${leftW}px; min-width:${leftW}px;`:'width:100%;'} height:${vh}; --gw-task:${nameW}px">
         <table class="gantt gleft-tbl">
@@ -675,7 +675,7 @@ function ganttPanel(p){
         </table>
       </div>
       ${tl?`<div class="gdivider" title="Drag to resize the task list" onmousedown="startColResize(event)" ontouchstart="startColResize(event)"></div>
-      <div class="gright ${state.gPan?'canpan':''}" id="ganttRight" style="height:${vh}; ${state.gFit?'overflow-x:hidden':''}" onscroll="syncGanttScroll()" ${state.gPan?'onmousedown="startPan(event)" onmousemove="ganttCross(event)" onmouseleave="ganttCrossHide()"':''}>
+      <div class="gright ${state.gPan?'canpan':''}" id="ganttRight" style="height:${vh}; ${state.gFit?'overflow-x:hidden':''}" onscroll="syncGanttScroll()" ${state.gPan?'onmousedown="startPan(event)" onmousemove="ganttCross(event)" onmouseleave="ganttCrossHide()"':'onpointerdown="ganttCellDown(event)"'}>
         <table class="gantt gright-tbl ${state.gFit?'fit':''}" data-days="${days.length}" style="--dayw:${cellW}px">
           <thead><tr>${monthRow}</tr><tr>${dayHead}</tr></thead>
           <tbody>${rightBody}</tbody>
@@ -757,14 +757,73 @@ function fitGantt(){
   }
   [tbl, ltbl].forEach(t=>{ if(!t)return; t.style.setProperty('--rowh', rowh+'px'); t.style.setProperty('--bandh', bandh+'px'); t.classList.toggle('fitv', rowh<28); });
 }
-function ganttSetDay(tid, day){
-  const p=activeProject(); const t=p.tasks[tid]; const r=state.resolved[tid]; if(!t||!r) return;
-  if(day < r.start) return; // can't end before it starts
+/* Repaint ONE task's timeline cells in place (start/finish may be overridden for a live drag preview).
+   Mirrors the cell logic in ganttPanel but mutates existing <td>s — no innerHTML rebuild. */
+function repaintRow(tr, t, s0, f0){
+  if(!tr||!t) return;
+  const r=state.resolved[t.id]||{}; const start=s0||r.start, finish=f0||r.finish;
+  const c=state.companies[t.companyId]||{color:'#444',letter:'?'};
+  const fill=(state.gColor==='status')?statusMeta(taskStatus(t)).color:c.color;
+  const fc=textOn(fill); const today=fmtYMD(new Date());
+  const cells=tr.cells;
+  for(let j=0;j<cells.length;j++){ const td=cells[j]; const d=td.dataset.d; if(!d) continue;
+    const within = start && d>=start && d<=finish && isWorkday(d,state.holidays);
+    const canClick = start && d>=start && !state.gPan;
+    const tdc = d===today?' today':'';
+    let cls, bg='', col='', txt='';
+    if(within){ cls='day'+tdc+(canClick?' gcell':''); bg=fill; col=fc; txt=c.letter; }
+    else { const cl=isHoliday(d,state.holidays)?' hol':isWeekend(d)?' wknd':''; cls='day'+cl+tdc+(canClick?' gcell':''); }
+    if(td.className!==cls) td.className=cls;
+    if(td.style.background!==bg) td.style.background=bg;
+    if(td.style.color!==col) td.style.color=col;
+    if(td.textContent!==txt) td.textContent=txt;
+  }
+}
+/* Click-and-drag on the timeline: mouse drag sweeps the bar (live preview); a plain click/tap sets
+   the end day (tapping the last day shortens by one). Touch drag is left to scroll the pane. */
+function ganttCellDown(e){
+  if(state.gPan) return;
+  const td=e.target.closest && e.target.closest('td.gcell'); if(!td) return;
+  const tr=td.closest('tr[data-tid]'); if(!tr) return;
+  const tid=tr.dataset.tid; const t=activeProject().tasks[tid]; const r=state.resolved[tid]; if(!t||!r) return;
+  const mouse=(e.pointerType==='mouse'||e.pointerType===undefined);
+  const startDay=r.start, downDay=td.dataset.d; const sx=e.clientX, sy=e.clientY;
+  let lastDay=downDay, moved=false;
+  const move=ev=>{
+    if(!moved && Math.abs((ev.clientX||0)-sx)+Math.abs((ev.clientY||0)-sy)<6) return;
+    moved=true; if(!mouse) return;                                  // touch move = let the pane scroll
+    const el=document.elementFromPoint(ev.clientX,ev.clientY); const cell=el&&el.closest('td[data-d]'); if(!cell) return;
+    const d=cell.dataset.d; if(!d||d<startDay) return;
+    if(d!==lastDay){ lastDay=d; repaintRow(tr, t, startDay, d); }     // instant preview, no re-render
+  };
+  const end=()=>{
+    document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',end);
+    if(!mouse && moved) return;                                      // touch scroll, not an edit
+    let nd;
+    if(moved && mouse) nd=Math.max(1, workingDaysBetween(startDay,lastDay,state.holidays).length);
+    else if(downDay===r.finish) nd=Math.max(1, workingDaysBetween(r.start,r.finish,state.holidays).length-1);
+    else nd=Math.max(1, workingDaysBetween(startDay,downDay,state.holidays).length);
+    commitDayEdit(tid, nd);
+  };
+  if(mouse) e.preventDefault();
+  document.addEventListener('pointermove',move,{passive:true});
+  document.addEventListener('pointerup',end);
+}
+/* Apply a new duration and repaint ONLY the rows whose dates actually moved (the task + any
+   chained dependents) — avoids rebuilding the whole O(tasks×days) Gantt on every edit. */
+function commitDayEdit(tid, nd){
+  const p=activeProject(); const t=p.tasks[tid]; if(!t) return;
+  if((Number(t.days)||1)===nd){ repaintRow(_gRight&&_gRight.querySelector('tr[data-tid="'+tid+'"]'), t); return; } // snap preview back, no change
   pushUndo();
-  let nd;
-  if(day===r.finish) nd=Math.max(1, workingDaysBetween(r.start, r.finish, state.holidays).length - 1); // click last day → remove it
-  else nd=Math.max(1, workingDaysBetween(r.start, day, state.holidays).length);             // click elsewhere → end there
-  t.days=nd; recomputeActive(); render(); saveActive();
+  const old={}; for(const k in state.resolved){ const rr=state.resolved[k]; old[k]=rr.start+'|'+rr.finish; }
+  t.days=nd; recomputeActive();
+  const days=_ganttDays, first=days&&days[0], last=days&&days[days.length-1];
+  let needFull=!days||!_gRight;
+  if(!needFull){ for(const k in state.resolved){ const rr=state.resolved[k]; if(rr.start<first||rr.finish>last){ needFull=true; break; } } } // edit pushed past the window → rebuild
+  if(needFull){ render(); saveActive(); return; }
+  for(const k in state.resolved){ const rr=state.resolved[k]; if(k===tid || old[k]!==rr.start+'|'+rr.finish){ const row=_gRight.querySelector('tr[data-tid="'+k+'"]'); if(row) repaintRow(row, p.tasks[k]); } }
+  const di=_gLeft&&_gLeft.querySelector('tr[data-tid="'+tid+'"] .l-days input'); if(di) di.value=nd;
+  saveActive();
 }
 
 /* ============================================================ STATUS */
@@ -1701,7 +1760,7 @@ function infoSubjectsView(u, lockBtn){
   const cards=subs.map(name=>{ const c=subjectCounts(name);
     return `<div class="card p-4 cursor-pointer" onclick="openSubject(this.dataset.s)" data-s="${esc(name)}">
       <div class="flex items-center gap-2 mb-2"><span class="ms text-[24px]" style="color:var(--primary)">${subjIcon(name)}</span><div class="display font-semibold text-base flex-1 truncate">${esc(name)}</div><span class="ms text-white/25">chevron_right</span></div>
-      <div class="text-xs text-white/55">${c.ann} post${c.ann===1?'':'s'} · ${c.docs} doc${c.docs===1?'':'s'} · ${c.facts} fact${c.facts===1?'':'s'}</div>
+      <div class="text-xs text-white/55">${c.ann} post${c.ann===1?'':'s'} · ${c.docs} reference${c.docs===1?'':'s'}</div>
       <div class="text-xs text-white/30 mt-1">${c.last?'Updated '+relTime(c.last):'No updates yet'}</div>
     </div>`;
   }).join('');
@@ -1727,10 +1786,8 @@ function infoSubjectDetail(subject, u, lockBtn){
     </div>
     <div class="lcaps mb-2 flex items-center gap-2"><span class="ms text-[15px]" style="color:var(--primary)">article</span>Information</div>
     ${ifAnnView()}
-    <div class="lcaps mb-2 mt-5 flex items-center gap-2"><span class="ms text-[15px]" style="color:var(--primary)">description</span>Documents</div>
+    <div class="lcaps mb-2 mt-5 flex items-center gap-2"><span class="ms text-[15px]" style="color:var(--primary)">description</span>References</div>
     ${ifDocsView()}
-    <div class="lcaps mb-2 mt-5 flex items-center gap-2"><span class="ms text-[15px]" style="color:var(--primary)">bolt</span>Quick Info</div>
-    ${ifFactsView()}
   </div>`;
 }
 function openSubject(name){ state.infoflow.subject=name; render(); window.scrollTo(0,0); }
@@ -1772,7 +1829,7 @@ function openAnn(id){
   if(!requireUnlock()) return;
   const a=id?{...state.infoflow.ann[id]}:{ title:'',body:'',topic:(state.infoflow.subject||ifTopics()[0]||'General'),pinned:false,docIds:[],link:'' };
   const topicOpts=ifTopics().map(t=>`<option ${t===a.topic?'selected':''}>${esc(t)}</option>`).join('');
-  const docOpts=Object.entries(state.infoflow.docs||{}).map(([did,d])=>`<label class="flex items-center gap-2 text-sm py-0.5"><input type="checkbox" value="${did}" ${(a.docIds||[]).includes(did)?'checked':''} class="ifDoc"> ${esc(d.title)}</label>`).join('') || '<div class="text-xs text-white/40">No documents yet — add some in the Documents section.</div>';
+  const docOpts=Object.entries(state.infoflow.docs||{}).map(([did,d])=>`<label class="flex items-center gap-2 text-sm py-0.5"><input type="checkbox" value="${did}" ${(a.docIds||[]).includes(did)?'checked':''} class="ifDoc"> ${esc(d.title)}</label>`).join('') || '<div class="text-xs text-white/40">No references yet — add some in the References section.</div>';
   $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-5 w-full max-w-lg">
     <div class="display font-semibold text-lg mb-3">${id?'Edit':'Post'} information</div>
     <input id="annTitle" class="fld w-full mb-2" placeholder="Title (e.g. Elevator embed delivery update)" value="${esc(a.title)}">
@@ -1782,7 +1839,7 @@ function openAnn(id){
       <label class="flex items-center gap-1 text-xs text-white/60 ml-2"><input type="checkbox" id="annPin" ${a.pinned?'checked':''}> Pin to top</label>
     </div>
     <input id="annLink" class="fld w-full mb-2" placeholder="Optional link (Drive / BIM 360 URL)" value="${esc(a.link||'')}">
-    <div class="lcaps mb-1" style="font-size:10px">Attach documents</div>
+    <div class="lcaps mb-1" style="font-size:10px">Attach references</div>
     <div class="max-h-32 overflow-auto mb-3">${docOpts}</div>
     <div class="flex justify-end gap-2"><button class="btn btn-ghost" onclick="closeModal()">Cancel</button><button class="btn btn-green" onclick="saveAnn('${id||''}')">${id?'Save':'Post'}</button></div>
   </div></div>`;
@@ -1802,15 +1859,15 @@ function ifDocsView(){
     <div class="flex-1 min-w-0"><div class="font-semibold truncate">${esc(d.title)}</div><div class="text-xs text-white/45 mt-0.5"><span class="chip" style="background:rgba(180,197,255,.14);color:var(--blue)">${esc(d.topic||'General')}</span> <span class="ml-1">${d.kind==='file'?Math.round((d.size||0)/1024)+' KB PDF':'external link'}</span></div></div>
     <button class="btn btn-ghost btn-sm" onclick="openDocView('${d.id}')"><span class="ms text-[16px]">open_in_new</span>Open</button>
     ${u?`<button class="icobtn" title="Delete" onclick="delDoc('${d.id}')"><span class="ms text-[16px]">close</span></button>`:''}
-  </div>`).join('') || `<div class="card p-8 text-center text-white/40">No documents yet.${u?' Click “Add document”.':' Unlock to add reference docs.'}</div>`;
-  return `${u?`<button class="btn btn-green mb-3" onclick="openDoc()"><span class="ms">upload_file</span>Add document</button>`:''}<div class="space-y-2">${cards}</div>`;
+  </div>`).join('') || `<div class="card p-8 text-center text-white/40">No references yet.${u?' Click “Add reference”.':' Unlock to add references.'}</div>`;
+  return `${u?`<button class="btn btn-green mb-3" onclick="openDoc()"><span class="ms">upload_file</span>Add reference</button>`:''}<div class="space-y-2">${cards}</div>`;
 }
 function openDoc(){
   if(!requireUnlock()) return;
   const cur=state.infoflow.subject||ifTopics()[0]||'';
   const topicOpts=ifTopics().map(t=>`<option ${t===cur?'selected':''}>${esc(t)}</option>`).join('');
   $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-5 w-full max-w-md">
-    <div class="display font-semibold text-lg mb-3">Add document</div>
+    <div class="display font-semibold text-lg mb-3">Add reference</div>
     <input id="docTitle" class="fld w-full mb-2" placeholder="Title (e.g. Elevator shop drawings Rev C)">
     <div class="flex items-center gap-2 mb-3"><label class="text-xs text-white/50">Topic</label><select id="docTopic" class="fld flex-1">${topicOpts}</select></div>
     <div class="lcaps mb-1" style="font-size:10px">Option A — paste a link (any size)</div>

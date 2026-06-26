@@ -7,12 +7,13 @@
 <title>SuperYap · Superintendent Suite</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Saira:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Saira:wght@600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+<!-- Material Symbols subset to only the icons this app uses (full font is ~300KB; this is a fraction). display=block avoids flashing the icon-name text while loading. -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=add,add_circle,add_link,architecture,arrow_back,arrow_downward,arrow_upward,article,bolt,calendar_month,calendar_view_month,calendar_view_week,campaign,category,check_circle,chevron_left,chevron_right,close,cloud_done,cloud_off,content_copy,create_new_folder,delete,description,download,download_done,edit,edit_note,elevator,event,expand_less,expand_more,fact_check,fit_screen,folder_open,foundation,fullscreen,fullscreen_exit,grid_4x4,grid_view,groups,handyman,health_and_safety,help_center,hourglass_top,how_to_reg,insights,inventory_2,ios_share,library_add,link,list,lock,lock_open,open_in_new,pan_tool,payments,pending,picture_as_pdf,plumbing,push_pin,radio_button_unchecked,redo,remove,report,save,schedule,science,search,settings,straighten,sync,table_view,task_alt,touch_app,tune,undo,unfold_less,unfold_more,upload_file,verified,view_list,warning,zoom_in,zoom_out&display=block" rel="stylesheet" />
 <link rel="stylesheet" href="assets/tw.css" />
-<!-- Firebase compat -->
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<!-- Firebase compat (defer: not render-blocking; boot() runs on DOMContentLoaded, after these execute) -->
+<script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <style>
   /* perf: never paint a blur (matches cup-dashboard CPU rule) */
   *{ backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }
@@ -110,8 +111,6 @@
   .gright.canpan{ cursor:grab; } .gright.panning{ cursor:grabbing; }
   .gdivider{ flex:none; width:4px; cursor:col-resize; background:rgba(255,255,255,.06); }
   .gdivider:hover,.gdivider.dragging{ background:var(--blue); }
-  .splitdiv{ flex:none; width:4px; align-self:stretch; margin:0 3px; cursor:col-resize; border-radius:3px; background:rgba(255,255,255,.07); }
-  .splitdiv:hover,.splitdiv.dragging{ background:var(--blue); }
   .gantt tbody tr{ height:var(--rowh,33px); }
   /* fit-to-screen: compress rows; tighten the LEFT controls so both panes stay row-aligned */
   .gantt.fitv tbody td{ padding-top:0; padding-bottom:0; }
@@ -154,9 +153,6 @@
   .statusdot{ display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:6px; cursor:pointer; background:transparent; border:none; }
   .statusdot:hover{ background:rgba(255,255,255,.08); }
   @media (max-width:880px){ .trow{ grid-template-columns: 30px 1fr 40px 96px 40px 124px auto; gap:6px; } .trow .col-finish{ display:none; } }
-  /* split build view: compact editor (status, name, days, company, actions);
-     dates live in the Gantt beside it, full edit via the row's edit popover */
-  .split-editor .trow{ grid-template-columns: 30px 1fr 44px 122px auto; gap:6px; }
   /* fit-to-screen: tiny day cells become colored bars (letters hidden) */
   .gantt.tiny .day, .gantt.tiny .day *{ font-size:0 !important; }
   /* look-ahead calendar */
@@ -185,11 +181,10 @@ const NS = 'look-ahead-schedule';
 const state = {
   nav: 'schedule',
   companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
-  resolved: {}, online: false, showPreview: true, seeded: false, collapsed: {}, lastTask: null,
+  resolved: {}, online: false, collapsed: {}, lastTask: null,
   view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company', gFull: false, gFit: false, showTimeline: true, gPan: false, gSearch: '', laSearch: '', crewHide: {}, dirty: false, pending: 0,
   ganttNameW: (parseInt(localStorage.getItem('la_gnameW'))||156),
-  editorW: (parseInt(localStorage.getItem('la_editorW'))||470),
-  tools: { assets:{}, config:{}, loaded:false, q:'', status:'all', tab:'dash', groupBy:'category' },
+  tools: { assets:{}, config:{}, loaded:false, loading:false, q:'', status:'all', tab:'dash', groupBy:'category' },
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
   infoflow: { ann:{}, docs:{}, facts:{}, config:{}, loaded:false, loading:false, subject:null, unlocked:(localStorage.getItem('la_if_unlocked')==='1') },
 };
@@ -288,7 +283,7 @@ const DEFAULT_TEMPLATES = {
     {name:'Set anchor bolts',            companyId:'webcor',  days:2},
     {name:'Bill Car survey / SME',       companyId:'sme',     days:1},
     {name:'Inspection',                  companyId:'inspect', days:1},
-    {name:'Pour',                        companyId:'pour',    days:1, linkPour:true},
+    {name:'Pour',                        companyId:'pour',    days:1},
     {name:'Strip formwork',              companyId:'webcor',  days:2},
     {name:'Backfill',                    companyId:'zarp',    days:2},
     {name:'Cure',                        companyId:'cure',    days:15},
@@ -384,6 +379,11 @@ function saveNow(opts){
 function refreshSaveUI(){ const el=document.getElementById('saveStatus'); if(el) el.outerHTML=saveStatusEl(); }
 function setSaveStatus(s){ state.saveState={ status:s, at: s==='saved'?Date.now():(state.saveState&&state.saveState.at||0) }; refreshSaveUI(); }
 function saveStatusEl(){
+  // The Save chip only tracks Schedule/Settings edits (which buffer locally until Save/⌘S).
+  // Info Flow / Attendance / Tools write straight to the cloud, so show a truthful "Live" pill there.
+  if(state.nav!=='schedule' && state.nav!=='settings'){
+    return `<span id="saveStatus" class="btn btn-ghost btn-sm text-sky-300 whitespace-nowrap" title="Changes on this tab save to the cloud instantly"><span class="ms text-[16px]">cloud_done</span> Live · auto-syncs</span>`;
+  }
   const s=state.saveState||{status:'saved',at:0}; let icon,txt,btncls,cls='';
   if(s.status==='saving'){ icon='sync'; txt='Saving…'; btncls='btn-ghost'; cls='text-amber-300'; }
   else if(!state.online){ icon='cloud_off'; txt='On device'; btncls='btn-ghost'; cls='text-amber-300'; }
@@ -394,6 +394,7 @@ function saveStatusEl(){
 /* ----- undo / redo (per-schedule snapshot stack) ----- */
 let undoStack=[], redoStack=[];
 let gScroll={left:0,top:0}, gCenteredPid=null;   // remember timeline scroll across renders; auto-center on today once per schedule
+let _gLeft=null, _gRight=null;                   // cached gantt panes (refreshed each render) so hot scroll/pan handlers skip getElementById
 function snapProject(){ const pid=activeId(); return { pid, data: JSON.stringify(state.projects[pid]||{}) }; }
 function pushUndo(){ if(!activeId()) return; undoStack.push(snapProject()); if(undoStack.length>60) undoStack.shift(); redoStack=[]; }
 function applySnap(s){ state.projects[s.pid]=JSON.parse(s.data); state.meta.activeProjectId=s.pid; recomputeActive(); render(); saveActive(); }
@@ -474,20 +475,25 @@ function duplicateSection(sid){
 }
 
 /* ============================================================ RENDER */
-function render(){
+/* render() coalesces every caller into one paint per animation frame, so a burst of
+   edits or remote Firebase updates rebuilds the DOM once instead of once-per-change. */
+let _rafPending=false;
+function render(){ if(_rafPending) return; _rafPending=true; requestAnimationFrame(()=>{ _rafPending=false; renderNow(); }); }
+function renderNow(){
   ensureActive(); if(!Object.keys(state.resolved).length) recomputeActive();
   const p=activeProject();
   let view;
   if(state.nav==='attendance') view=attendanceView();
   else if(state.nav==='tools') view=toolsView();
   else if(state.nav==='infoflow') view=infoflowView();
+  else if(state.nav==='settings') view=settingsPage();
   else view=builderView(p);
-  const _gr=document.getElementById('ganttRight'); if(_gr){ gScroll.left=_gr.scrollLeft; gScroll.top=_gr.scrollTop; }   // remember timeline scroll before rebuild
+  const _gr=_gRight||document.getElementById('ganttRight'); if(_gr){ gScroll.left=_gr.scrollLeft; gScroll.top=_gr.scrollTop; }   // remember timeline scroll before rebuild
   $('#app').innerHTML = header() + view;
-  if(typeof afterRender==='function') afterRender();
+  afterRender();
 }
 function setNav(id){ state.nav=id; render(); if(id==='attendance') ensureAttendance(); if(id==='tools') ensureTools(); if(id==='infoflow') ensureInfoflow(); }
-function goHome(){ state.nav='schedule'; state.view='build'; render(); afterRender(); window.scrollTo(0,0); }
+function goHome(){ state.nav='schedule'; state.view='build'; render(); window.scrollTo(0,0); }
 function header(){
   const p=activeProject();
   const projOpts=Object.entries(state.projects).map(([id,pr])=>`<option value="${id}" ${id===activeId()?'selected':''}>${esc(pr.name)}</option>`).join('');
@@ -512,12 +518,13 @@ function header(){
         <button class="btn btn-ghost" title="New schedule" onclick="newProject()"><span class="ms text-[18px]">add</span><span class="hidden lg:inline">New</span></button>
         <button class="btn btn-green" onclick="openExport()"><span class="ms">ios_share</span>Export</button>` : ''}
         ${saveStatusEl()}
+        <button class="icobtn ${state.nav==='settings'?'text-sky-300':''}" title="Settings" onclick="setNav('settings')"><span class="ms text-[18px]">settings</span></button>
       </div>
     </div>
   </div>`;
 }
 
-function setView(v){ state.view=v; render(); afterRender(); }
+function setView(v){ state.view=v; render(); }
 function viewSwitcher(){
   const item=(id,label,icon)=>`<div class="tabbtn flex items-center gap-1 ${state.view===id?'on':''}" onclick="setView('${id}')"><span class="ms text-[16px]">${icon}</span><span class="hidden sm:inline">${label}</span></div>`;
   return `<div class="seg mb-3">${item('build','Build','edit_note')}${item('lookahead','Look-Ahead','calendar_view_week')}${item('crew','Crew','groups')}${item('progress','Progress','insights')}</div>`;
@@ -545,89 +552,17 @@ function buildView(p){
       </div>
       <div class="ml-auto flex items-center gap-2 text-xs text-white/50">
         <span class="ms text-[16px]">event</span> Anchor ${esc(p.startDate)}
-        <button class="btn btn-ghost btn-sm" onclick="state.showTimeline=!state.showTimeline; render(); afterRender()" title="Show or hide the timeline"><span class="ms text-[16px]">${state.showTimeline?'calendar_view_month':'view_list'}</span>${state.showTimeline?'Hide timeline':'Show timeline'}</button>
+        <button class="btn btn-ghost btn-sm" onclick="state.showTimeline=!state.showTimeline; render()" title="Show or hide the timeline"><span class="ms text-[16px]">${state.showTimeline?'calendar_view_month':'view_list'}</span>${state.showTimeline?'Hide timeline':'Show timeline'}</button>
       </div>
     </div>`;
   if(!secs.length) return `${toolbar}<div class="card p-8 text-center text-white/50">No sections yet. Click <b>Insert Cycle</b> to drop in a full foundation sequence, or <b>Add Section</b>.</div>`;
   return `${toolbar}${ganttPanel(p)}`;
 }
 
-function editorPanel(p, compact){
-  const secs=sectionList(p);
-  if(!secs.length) return `<div class="card p-8 text-center text-white/50">No sections yet. Click <b>Insert Cycle</b> to drop in a full foundation sequence, or <b>Add Section</b>.</div>`;
-  return secs.map(s=>{
-    const tasks=tasksOf(p,s.id);
-    const collapsed=!!state.collapsed[s.id];
-    const doneN=tasks.filter(t=>taskStatus(t)==='done').length;
-    const rows=tasks.map(t=>taskRow(p,t,compact)).join('');
-    const headRow = compact
-      ? `<div></div><div>Name</div><div class="text-center">Days</div><div>Company</div><div></div>`
-      : `<div></div><div>Name</div><div class="text-center">Days</div><div>Start</div><div class="col-finish">Finish</div><div class="text-center">Link</div><div>Company</div><div></div>`;
-    return `<div class="card mb-4 overflow-hidden">
-      <div class="secband-edit">
-        <button class="icobtn" title="${collapsed?'Expand':'Collapse'} section" onclick="toggleCollapse('${s.id}')" style="color:var(--blue)"><span class="ms text-[20px]">${collapsed?'chevron_right':'expand_more'}</span></button>
-        <input id="secname-${s.id}" class="secname display font-semibold flex-1" value="${esc(s.name)}" onchange="renameSection('${s.id}', this.value)">
-        <button class="icobtn" title="Rename section" onclick="document.getElementById('secname-${s.id}').focus()"><span class="ms text-[16px]">edit</span></button>
-        <span class="lcaps" style="font-size:10px;letter-spacing:.1em" title="Tasks done">${doneN>0?`${doneN}/${tasks.length} done`:`${tasks.length} task${tasks.length===1?'':'s'}`}</span>
-        <button class="icobtn" title="Move up" onclick="moveSection('${s.id}',-1)"><span class="ms text-[18px]">arrow_upward</span></button>
-        <button class="icobtn" title="Move down" onclick="moveSection('${s.id}',1)"><span class="ms text-[18px]">arrow_downward</span></button>
-        <button class="btn btn-ghost btn-sm" onclick="addTask('${s.id}')"><span class="ms text-[16px]">add</span>Task</button>
-        <button class="icobtn" title="Duplicate section" onclick="duplicateSection('${s.id}')"><span class="ms text-[18px]">content_copy</span></button>
-        <button class="icobtn" title="Delete section" onclick="delSection('${s.id}')"><span class="ms text-[18px]">delete</span></button>
-      </div>
-      ${collapsed ? '' : `<div class="trow lcaps">${headRow}</div>
-      ${rows}`}
-    </div>`;
-  }).join('');
-}
 function toggleCollapse(sid){ state.collapsed[sid]=!state.collapsed[sid]; saveCollapsed(); render(); }
 function allCollapsed(){ const secs=sectionList(activeProject()); return secs.length>0 && secs.every(s=>state.collapsed[s.id]); }
 function toggleAllCollapse(){ const p=activeProject(); if(allCollapsed()){ state.collapsed={}; } else { sectionList(p).forEach(s=>state.collapsed[s.id]=true); } saveCollapsed(); render(); }
 function saveCollapsed(){ try{ localStorage.setItem('la_collapsed', JSON.stringify(state.collapsed)); }catch(e){} }
-
-function taskRow(p,t,compact){
-  const r=state.resolved[t.id]||{}; const chained=t.depMode==='afterPrev';
-  const opts=companyList().map(c=>`<option value="${c.id}" ${c.id===t.companyId?'selected':''}>${esc(c.name)}</option>`).join('');
-  const c=state.companies[t.companyId];
-  const st=statusMeta(taskStatus(t)); const done=taskStatus(t)==='done';
-  const lead=`<div class="flex items-center justify-center">
-      <button class="statusdot" onclick="bubbleClick('${t.id}', event.shiftKey)" title="${st.label} — click to advance · shift-click to mark a range" style="color:${st.color}"><span class="ms text-[20px]">${st.icon}</span></button>
-    </div>`;
-  const nameI=`<input class="fld" value="${esc(t.name)}" style="${done?'text-decoration:line-through;opacity:.55':''}" onchange="changeTaskField('${t.id}','name',this.value)">`;
-  const daysI=`<input class="fld mono text-center" type="number" min="1" value="${t.days}" title="Working days" onchange="changeTaskField('${t.id}','days',this.value)">`;
-  const companyI=`<div class="flex items-center gap-1.5">
-      <span class="codot" style="background:${c?c.color:'#444'};color:${c?textOn(c.color):'#fff'}">${c?esc(c.letter):'?'}</span>
-      <select class="fld flex-1" style="border-color:transparent;background:transparent" onchange="changeTaskField('${t.id}','companyId',this.value)">${opts}</select>
-    </div>`;
-  const reorder=`<div class="flex flex-col items-center handle">
-        <button class="icobtn" style="width:16px;height:12px" title="Move up" onclick="moveTask('${t.id}',-1)"><span class="ms" style="font-size:13px">expand_less</span></button>
-        <button class="icobtn" style="width:16px;height:12px" title="Move down" onclick="moveTask('${t.id}',1)"><span class="ms" style="font-size:13px">expand_more</span></button>
-      </div>`;
-  if(compact){
-    return `<div class="trow">${lead}${nameI}${daysI}${companyI}
-      <div class="flex items-center gap-0.5 justify-end">
-        ${reorder}
-        <button class="icobtn" title="Edit dates / chain / pour" onclick="openTaskQuick('${t.id}')"><span class="ms text-[16px]">tune</span></button>
-        <button class="icobtn" title="Delete" onclick="delTask('${t.id}')"><span class="ms text-[16px]">close</span></button>
-      </div>
-    </div>`;
-  }
-  return `<div class="trow">${lead}${nameI}${daysI}
-    ${chained
-      ? `<div class="fld mono flex items-center" style="color:var(--on-var);opacity:.7" title="Auto from previous task">${esc(fmtMD(r.start))}</div>`
-      : `<input class="fld mono" type="date" value="${esc(t.start||r.start||p.startDate)}" onchange="changeTaskField('${t.id}','start',this.value)">`}
-    <div class="fld mono col-finish flex items-center" style="color:var(--on-var);opacity:.7">${esc(fmtMD(r.finish))}</div>
-    <button class="icobtn" title="${chained?'Chained to previous task — click for a fixed date':'Fixed date — click to chain to previous'}" onclick="toggleDep('${t.id}')" style="${chained?'color:var(--primary)':''}">
-      <span class="ms text-[18px]">${chained?'link':'push_pin'}</span></button>
-    ${companyI}
-    <div class="flex items-center gap-0.5 justify-end">
-      ${reorder}
-      <button class="icobtn" title="Link Cup pour" onclick="openPourLink('${t.id}')" style="${t.linkedPourId?'color:var(--blue)':''}"><span class="ms text-[16px]">${t.linkedPourId?'link':'add_link'}</span></button>
-      <button class="icobtn" title="Duplicate" onclick="dupTask('${t.id}')"><span class="ms text-[16px]">content_copy</span></button>
-      <button class="icobtn" title="Delete" onclick="delTask('${t.id}')"><span class="ms text-[16px]">close</span></button>
-    </div>
-  </div>`;
-}
 
 /* ---------- GANTT (WYSIWYG preview) ---------- */
 function ganttWindow(p){
@@ -656,14 +591,13 @@ function ganttPanel(p){
   const tl=state.showTimeline;
   const coAll=companyList();
   const coOptsFor=t=>coAll.map(c=>`<option value="${c.id}" ${c.id===t.companyId?'selected':''}>${esc(c.name)}</option>`).join('');
-  const q=(state.gSearch||'').trim().toLowerCase();
   let leftBody='', rightBody='';
   sectionList(p).forEach(s=>{
-    const tks=tasksOf(p,s.id).filter(t=> (filt==='all' || t.companyId===filt) && (!q || (t.name||'').toLowerCase().includes(q) || (state.companies[t.companyId]&&state.companies[t.companyId].name||'').toLowerCase().includes(q)));
+    const tks=tasksOf(p,s.id).filter(t=> (filt==='all' || t.companyId===filt));   // crew filter only; text search runs in-place (filterGantt)
     if(!tks.length) return;
     const collapsed=!!state.collapsed[s.id];
     const doneN=tks.filter(t=>taskStatus(t)==='done').length;
-    leftBody+=`<tr class="secband"><td colspan="5"><div class="flex items-center gap-0.5">
+    leftBody+=`<tr class="secband" data-band="${s.id}"><td colspan="5"><div class="flex items-center gap-0.5">
       <button class="icobtn" title="${collapsed?'Expand':'Collapse'}" onclick="toggleCollapse('${s.id}')" style="color:var(--blue)"><span class="ms text-[18px]">${collapsed?'chevron_right':'expand_more'}</span></button>
       <input class="secname-g flex-1" value="${esc(s.name)}" onchange="renameSection('${s.id}',this.value)">
       <span class="lcaps mr-1" style="font-size:9px" title="Tasks done">${doneN>0?doneN+'/'+tks.length:tks.length}</span>
@@ -673,13 +607,14 @@ function ganttPanel(p){
       <button class="icobtn" title="Move down" onclick="moveSection('${s.id}',1)"><span class="ms text-[15px]">arrow_downward</span></button>
       <button class="icobtn" title="Delete section" onclick="delSection('${s.id}')"><span class="ms text-[15px]">delete</span></button>
     </div></td></tr>`;
-    rightBody+=`<tr class="secband"><td colspan="${days.length}"></td></tr>`;
+    rightBody+=`<tr class="secband" data-band="${s.id}"><td colspan="${days.length}"></td></tr>`;
     if(collapsed) return;
     tks.forEach(t=>{
       const r=state.resolved[t.id]||{}; const c=state.companies[t.companyId]||{color:'#444',letter:'?'};
       const fill = byStatus ? statusMeta(taskStatus(t)).color : c.color;
       const stt=statusMeta(taskStatus(t)); const done=taskStatus(t)==='done';
-      leftBody+=`<tr>
+      const qd=esc(((t.name||'')+' '+(c.name||'')).toLowerCase());
+      leftBody+=`<tr data-tid="${t.id}" data-sid="${s.id}" data-q="${qd}">
         <td class="l-bub"><button class="statusdot" onclick="bubbleClick('${t.id}', event.shiftKey)" style="color:${stt.color}" title="${stt.label} — click to advance · shift-click a range"><span class="ms text-[19px]">${stt.icon}</span></button></td>
         <td class="l-task"><input class="tinp" value="${esc(t.name)}" style="${done?'text-decoration:line-through;opacity:.55':''}" onchange="changeTaskField('${t.id}','name',this.value)"></td>
         <td class="l-days"><input class="tinp mono" type="number" min="1" value="${t.days}" title="Working days" onchange="changeTaskField('${t.id}','days',this.value)"></td>
@@ -704,7 +639,7 @@ function ganttPanel(p){
           const cl=isHoliday(d,state.holidays)?'hol':isWeekend(d)?'wknd':'';
           return `<td class="day ${cl} ${tdc} ${gc}" ${oc}></td>`;
         }).join('');
-        rightBody+=`<tr>${cells}</tr>`;
+        rightBody+=`<tr data-tid="${t.id}" data-sid="${s.id}" data-q="${qd}">${cells}</tr>`;
       }
     });
   });
@@ -712,7 +647,7 @@ function ganttPanel(p){
   const nameW=state.ganttNameW||200; const leftW=nameW+282;
   const vh=state.gFull?'calc(100vh - 150px)':'70vh';
   const fsBtn=`<button class="icobtn" title="${state.gFull?'Exit fullscreen (Esc)':'Fullscreen'}" onclick="toggleGanttFull()"><span class="ms text-[18px]">${state.gFull?'fullscreen_exit':'fullscreen'}</span></button>`;
-  const searchBox=`<div class="srch"><span class="ms srch-i">search</span><input id="gSearchBox" class="fld srch-in" style="width:160px" placeholder="Find a task…" value="${esc(state.gSearch||'')}" oninput="gSearchInput(this.value)">${state.gSearch?`<span class="ms srch-x" onclick="gSearchInput('')">close</span>`:''}</div>`;
+  const searchBox=`<div class="srch"><span class="ms srch-i">search</span><input id="gSearchBox" class="fld srch-in" style="width:160px" placeholder="Find a task…" value="${esc(state.gSearch||'')}" oninput="gSearchInput(this.value)">${state.gSearch?`<span class="ms srch-x" onclick="state.gSearch='';render()">close</span>`:''}</div>`;
   return `<div class="card gantt-card p-3 ${state.gFull?'gfull':''}" id="ganttCard">
     <div class="flex items-center gap-3 mb-2 flex-wrap">
       ${tl?`<div class="flex items-center flex-wrap gap-y-1 flex-1 min-w-0">${legend}</div>`:`<span class="text-xs text-white/40 flex-1">Timeline hidden — task list only</span>`}
@@ -726,7 +661,7 @@ function ganttPanel(p){
         <select class="fld" title="Color bars by" onchange="state.gColor=this.value; render()">
           <option value="company" ${!byStatus?'selected':''}>Color by crew</option>
           <option value="status" ${byStatus?'selected':''}>Color by status</option></select>
-        <button class="btn btn-ghost btn-sm" onclick="state.gFit=!state.gFit; render(); afterRender()" style="${state.gFit?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Fit the whole schedule on one screen (compresses rows + timeline)"><span class="ms text-[16px]">fit_screen</span>Fit</button>
+        <button class="btn btn-ghost btn-sm" onclick="state.gFit=!state.gFit; render()" style="${state.gFit?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Fit the whole schedule on one screen (compresses rows + timeline)"><span class="ms text-[16px]">fit_screen</span>Fit</button>
         <button class="btn btn-ghost btn-sm" onclick="state.gPan=!state.gPan; if(!state.gPan)ganttCrossHide(); render()" style="${state.gPan?'background:rgba(47,128,237,.16);color:var(--blue)':''}" title="Pan: drag the timeline to scroll, with a crosshair to line up overlaps"><span class="ms text-[16px]">pan_tool</span>Pan</button>`:''}
         ${fsBtn}
       </div>
@@ -749,29 +684,24 @@ function ganttPanel(p){
     </div>
   </div>`;
 }
-function syncGanttScroll(){ const l=document.getElementById('ganttLeft'), r=document.getElementById('ganttRight'); if(l&&r) l.scrollTop=r.scrollTop; }
-function startSplitResize(e){
-  e.preventDefault(); e.stopPropagation();
-  const handle=e.currentTarget; handle&&handle.classList.add('dragging');
-  const startX=(e.touches?e.touches[0].clientX:e.clientX);
-  const startW=state.editorW||470;
-  const wrap=document.getElementById('splitWrap');
-  function move(ev){ const x=(ev.touches?ev.touches[0].clientX:ev.clientX); const w=Math.max(300, Math.min(900, Math.round(startW+(x-startX)))); state.editorW=w; if(wrap) wrap.style.setProperty('--ew', w+'px'); if(state.gFit) fitGantt(); if(ev.cancelable) ev.preventDefault(); }
-  function up(){ handle&&handle.classList.remove('dragging'); document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); document.removeEventListener('touchmove',move); document.removeEventListener('touchend',up); try{localStorage.setItem('la_editorW',String(state.editorW));}catch(e){} }
-  document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); document.addEventListener('touchmove',move,{passive:false}); document.addEventListener('touchend',up);
-}
-function ganttWheel(e){ const r=document.getElementById('ganttRight'); if(r){ r.scrollTop+=e.deltaY; if(e.cancelable) e.preventDefault(); } }
+function syncGanttScroll(){ const l=_gLeft||document.getElementById('ganttLeft'), r=_gRight||document.getElementById('ganttRight'); if(l&&r) l.scrollTop=r.scrollTop; }
+function ganttWheel(e){ const r=_gRight||document.getElementById('ganttRight'); if(r){ r.scrollTop+=e.deltaY; if(e.cancelable) e.preventDefault(); } }
 function startPan(e){
   if(e.button!==undefined && e.button!==0) return;
-  const r=document.getElementById('ganttRight'); if(!r) return;
+  const r=_gRight||document.getElementById('ganttRight'); if(!r) return;
   const sx=e.clientX, sy=e.clientY, sl=r.scrollLeft, st=r.scrollTop;
   r.classList.add('panning');
   function move(ev){ r.scrollLeft=sl-(ev.clientX-sx); r.scrollTop=st-(ev.clientY-sy); syncGanttScroll(); }
   function up(){ r.classList.remove('panning'); document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up); }
   document.addEventListener('mousemove',move); document.addEventListener('mouseup',up); e.preventDefault();
 }
-function ganttCross(e){
-  const r=document.getElementById('ganttRight'); if(!r){ ganttCrossHide(); return; }
+/* Crosshair runs on every mousemove; coalesce to one job per animation frame so we do at most
+   one getBoundingClientRect + elementFromPoint hit-test per frame instead of per event. */
+let _crossRAF=false, _crossEv=null;
+function ganttCross(e){ _crossEv={clientX:e.clientX, clientY:e.clientY}; if(_crossRAF) return; _crossRAF=true; requestAnimationFrame(crossTick); }
+function crossTick(){
+  _crossRAF=false; const e=_crossEv; if(!e) return;
+  const r=_gRight||document.getElementById('ganttRight'); if(!r){ ganttCrossHide(); return; }
   const rect=r.getBoundingClientRect();
   if(e.clientX<rect.left||e.clientX>rect.right||e.clientY<rect.top||e.clientY>rect.bottom){ ganttCrossHide(); return; }
   let ov=document.getElementById('gxhair');
@@ -787,13 +717,13 @@ function ganttCross(e){
   ov.style.display='block';
 }
 function ganttCrossHide(){ const ov=document.getElementById('gxhair'); if(ov) ov.style.display='none'; }
-function toggleGanttFull(){ state.gFull=!state.gFull; render(); afterRender(); }
+function toggleGanttFull(){ state.gFull=!state.gFull; render(); }
 function startColResize(e){
   e.preventDefault(); e.stopPropagation();
   const handle=e.currentTarget; handle&&handle.classList.add('dragging');
   const startX=(e.touches?e.touches[0].clientX:e.clientX);
   const startW=state.ganttNameW||156;
-  const left=document.getElementById('ganttLeft');
+  const left=_gLeft||document.getElementById('ganttLeft');
   function move(ev){ const x=(ev.touches?ev.touches[0].clientX:ev.clientX); const w=Math.max(90, Math.min(480, Math.round(startW+(x-startX)))); state.ganttNameW=w; if(left){ left.style.width=(w+282)+'px'; left.style.minWidth=(w+282)+'px'; left.style.setProperty('--gw-task', w+'px'); } if(ev.cancelable) ev.preventDefault(); }
   function up(){ handle&&handle.classList.remove('dragging');
     document.removeEventListener('mousemove',move); document.removeEventListener('mouseup',up);
@@ -806,9 +736,9 @@ function startColResize(e){
 }
 function fitGantt(){
   if(!state.gFit) return;
-  const r=document.getElementById('ganttRight'); if(!r) return;
+  const r=_gRight||document.getElementById('ganttRight'); if(!r) return;
   const tbl=r.querySelector('table'); if(!tbl) return;
-  const left=document.getElementById('ganttLeft'); const ltbl=left&&left.querySelector('table');
+  const left=_gLeft||document.getElementById('ganttLeft'); const ltbl=left&&left.querySelector('table');
   // horizontal — shrink day columns so the whole timeline fits
   const days=+tbl.dataset.days||1;
   const w=Math.max(3, Math.min(26, Math.floor((r.clientWidth-6)/days)));   // shrink to fit; never stretch past normal
@@ -845,9 +775,23 @@ const STATUS=[
 ];
 function taskStatus(t){ return t.status||'todo'; }
 function statusMeta(id){ return STATUS.find(s=>s.id===id)||STATUS[0]; }
-function setTaskStatus(tid,st){ const p=activeProject(); const t=p.tasks[tid]; if(!t)return; pushUndo(); t.status=st; render(); afterRender(); saveActive(); }
-function gSearchInput(v){ state.gSearch=v; render(); const el=document.getElementById('gSearchBox'); if(el){ el.focus(); try{ el.setSelectionRange(v.length,v.length); }catch(e){} } }
-function laSearchInput(v){ state.laSearch=v; render(); const el=document.getElementById('laSearchBox'); if(el){ el.focus(); try{ el.setSelectionRange(v.length,v.length); }catch(e){} } }
+function setTaskStatus(tid,st){ const p=activeProject(); const t=p.tasks[tid]; if(!t)return; pushUndo(); t.status=st; render(); saveActive(); }
+/* Search filters rows in place (toggle display) instead of rebuilding the whole Gantt — the
+   input keeps focus/caret natively and nothing re-renders on each keystroke. */
+function gSearchInput(v){ state.gSearch=v; filterGantt(); }
+function laSearchInput(v){ state.laSearch=v; filterLA(); }
+function filterRows(scope){
+  const q=(state.gSearch||'').trim().toLowerCase(); const sec={};
+  scope.querySelectorAll('tr[data-tid]').forEach(tr=>{ const m=!q||(tr.dataset.q||'').includes(q); tr.style.display=m?'':'none'; if(m) sec[tr.dataset.sid]=1; });
+  scope.querySelectorAll('tr[data-band]').forEach(tr=>{ tr.style.display=(!q||sec[tr.dataset.band])?'':'none'; });
+}
+function filterGantt(){ const l=_gLeft||document.getElementById('ganttLeft'); if(l) filterRows(l); const r=_gRight||document.getElementById('ganttRight'); if(r) filterRows(r); }
+function filterLA(){
+  const q=(state.laSearch||'').trim().toLowerCase();
+  document.querySelectorAll('.la-cells').forEach(cell=>{ let any=false;
+    cell.querySelectorAll('.la-chip').forEach(ch=>{ const m=!q||(ch.dataset.q||'').includes(q); ch.style.display=m?'':'none'; if(m) any=true; });
+    const e=cell.querySelector('.la-empty'); if(e) e.style.display=any?'none':''; });
+}
 function cycleStatus(tid){ const order=['todo','doing','done']; const cur=taskStatus(activeProject().tasks[tid]); setTaskStatus(tid, order[(order.indexOf(cur)+1)%3]); }
 function orderedTaskIds(){ const p=activeProject(); const out=[]; sectionList(p).forEach(s=>tasksOf(p,s.id).forEach(t=>out.push(t.id))); return out; }
 function bubbleClick(tid, shift){
@@ -859,7 +803,7 @@ function bubbleClick(tid, shift){
     const target = taskStatus(p.tasks[tid])==='done' ? 'todo' : 'done';   // shift-click toggles the range
     pushUndo();
     for(let k=i;k<=j;k++){ if(p.tasks[ids[k]]) p.tasks[ids[k]].status=target; }
-    render(); saveActive(); afterRender();
+    render(); saveActive();
     toast(`${j-i+1} task${j-i?'s':''} marked ${statusMeta(target).label.toLowerCase()}`);
   } else {
     cycleStatus(tid);
@@ -896,31 +840,38 @@ function openTaskQuick(tid){
 
 /* ============================================================ LOOK-AHEAD (3-week) */
 function weekMonday(ymd){ let s=ymd; while(dow(s)!==1) s=addDays(s,-1); return s; }
-function tasksOnDay(p,d){
-  const out=[];
-  Object.entries(p.tasks).forEach(([tid,t])=>{ const r=state.resolved[tid]; if(r && r.start<=d && d<=r.finish && isWorkday(d,state.holidays)) out.push({tid,...t}); });
-  return out.sort((a,b)=>(a.sectionId+a.order).localeCompare(b.sectionId+b.order));
+/* one pass over tasks builds a {day:[tasks]} map for the whole visible window,
+   instead of scanning every task once per day (was O(days × tasks)). */
+function tasksByDayMap(p, days){
+  const map={}; days.forEach(d=>map[d]=[]);
+  Object.entries(p.tasks).forEach(([tid,t])=>{ const r=state.resolved[tid]; if(!r) return;
+    days.forEach(d=>{ if(r.start<=d && d<=r.finish && isWorkday(d,state.holidays)) map[d].push({tid,...t}); });
+  });
+  Object.values(map).forEach(a=>a.sort((a,b)=>(a.sectionId+a.order).localeCompare(b.sectionId+b.order)));
+  return map;
 }
 function lookAheadView(p){
   const today=fmtYMD(new Date());
   let wkStart=weekMonday(today); for(let i=0;i<state.laOffset;i++) wkStart=addDays(wkStart,7);
   const DW=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const lq=(state.laSearch||'').trim().toLowerCase();
+  const allDays=[]; for(let w=0;w<state.laWeeks;w++){ const ws=addDays(wkStart,w*7); for(let i=0;i<7;i++) allDays.push(addDays(ws,i)); }
+  const dayMap=tasksByDayMap(p, allDays);
   let weeks='';
   for(let w=0; w<state.laWeeks; w++){
     const ws=addDays(wkStart, w*7);
     const days=[]; for(let i=0;i<7;i++) days.push(addDays(ws,i));
     const cols=days.map((d,i)=>{
       const hol=isHoliday(d,state.holidays);
-      const chips=tasksOnDay(p,d).filter(t=> !lq || (t.name||'').toLowerCase().includes(lq) || ((state.companies[t.companyId]||{}).name||'').toLowerCase().includes(lq)).map(t=>{
+      const chips=(dayMap[d]||[]).map(t=>{
         const c=state.companies[t.companyId]||{color:'#888',letter:'?'}; const done=taskStatus(t)==='done'; const st=statusMeta(taskStatus(t));
-        return `<div class="la-chip" style="border-left:3px solid ${c.color};${done?'opacity:.55':''}" onclick="openTaskQuick('${t.tid}')" title="${esc(t.name)} · ${esc(c.name)} · ${st.label} (click to edit)">
+        return `<div class="la-chip" data-q="${esc(((t.name||'')+' '+(c.name||'')).toLowerCase())}" style="border-left:3px solid ${c.color};${done?'opacity:.55':''}" onclick="openTaskQuick('${t.tid}')" title="${esc(t.name)} · ${esc(c.name)} · ${st.label} (click to edit)">
           <span class="codot" style="width:15px;height:15px;font-size:8px;background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span>
           <span class="truncate ${done?'line-through':''}">${esc(t.name)}</span></div>`;
-      }).join('') || '<div class="text-white/20 text-xs px-1.5 py-1">—</div>';
+      }).join('');
       return `<div class="la-day ${isWeekend(d)?'wknd':''} ${d===today?'today':''}">
         <div class="la-dhead">${DW[i]} <span class="mono text-white/45">${fmtMD(d)}</span>${hol?`<div class="text-[9px]" style="color:var(--error)">${esc(state.holidays[d])}</div>`:''}</div>
-        <div class="la-cells">${chips}</div></div>`;
+        <div class="la-cells">${chips}<div class="la-empty text-white/20 text-xs px-1.5 py-1" style="display:none">—</div></div></div>`;
     }).join('');
     weeks+=`<div class="card mb-3 p-3">
       <div class="lcaps mb-2" style="color:var(--blue)">Week of ${fmtMD(ws)}${w===0&&state.laOffset===0?' · This week':''}</div>
@@ -933,14 +884,14 @@ function lookAheadView(p){
       <button class="icobtn" title="Later" onclick="state.laOffset++; render()"><span class="ms">chevron_right</span></button>
       <span class="text-xs text-white/45 ml-2">Showing</span>
       <select class="fld" onchange="state.laWeeks=+this.value; render()">${[2,3,4,6].map(n=>`<option value="${n}" ${n===state.laWeeks?'selected':''}>${n} weeks</option>`).join('')}</select>
-      <div class="srch ml-auto"><span class="ms srch-i">search</span><input id="laSearchBox" class="fld srch-in" style="width:170px" placeholder="Find a task…" value="${esc(state.laSearch||'')}" oninput="laSearchInput(this.value)">${state.laSearch?`<span class="ms srch-x" onclick="laSearchInput('')">close</span>`:''}</div>
+      <div class="srch ml-auto"><span class="ms srch-i">search</span><input id="laSearchBox" class="fld srch-in" style="width:170px" placeholder="Find a task…" value="${esc(state.laSearch||'')}" oninput="laSearchInput(this.value)">${state.laSearch?`<span class="ms srch-x" onclick="state.laSearch='';render()">close</span>`:''}</div>
     </div>
-    ${lq?`<div class="text-xs text-white/45 mb-2">Showing tasks matching “${esc(state.laSearch)}” — <span class="cursor-pointer underline" onclick="laSearchInput('')">clear</span></div>`:''}
+    ${lq?`<div class="text-xs text-white/45 mb-2">Showing tasks matching “${esc(state.laSearch)}” — <span class="cursor-pointer underline" onclick="state.laSearch='';render()">clear</span></div>`:''}
     ${weeks}`;
 }
 
 /* ============================================================ CREW VIEW */
-function crewWorkload(p){ const m={}; Object.entries(p.tasks).forEach(([tid,t])=>{ const r=state.resolved[tid]; if(!r)return; m[t.companyId]=(m[t.companyId]||0)+workingDaysBetween(r.start,r.finish,state.holidays).length; }); return m; }
+function crewWorkload(p){ const m={}; Object.entries(p.tasks).forEach(([tid,t])=>{ const r=state.resolved[tid]; if(!r)return; m[t.companyId]=(m[t.companyId]||0)+(Number(t.days)||0); }); return m; }   // a task spans exactly its `days` working days (finish = workday(start, days-1))
 const NON_CREW=new Set(['cure','inspect','pour','survey']); // passive / events: not crew-conflicts
 function crewConflicts(p){
   const days=ganttWindow(p); const out=[];
@@ -975,7 +926,7 @@ function crewView(p){
         <span class="flex-1 truncate ${done?'line-through text-white/45':''}">${esc(t.name)} <span class="text-white/35 text-xs">· ${esc(sec)}</span></span>
         <span class="mono text-xs text-white/55">${fmtMD(t.r.start)}–${fmtMD(t.r.finish)}</span></div>`;}).join('');
     return `<div class="card overflow-hidden">
-      <div class="flex items-center gap-2 px-3 py-2 cursor-pointer select-none" style="background:rgba(255,255,255,.03)" onclick="state.crewHide['${c.id}']=!state.crewHide['${c.id}']; render(); afterRender()" title="${hidden?'Show':'Hide'} ${esc(c.name)} tasks">
+      <div class="flex items-center gap-2 px-3 py-2 cursor-pointer select-none" style="background:rgba(255,255,255,.03)" onclick="state.crewHide['${c.id}']=!state.crewHide['${c.id}']; render()" title="${hidden?'Show':'Hide'} ${esc(c.name)} tasks">
         <span class="ms text-[18px] text-white/45" style="transition:transform .15s;transform:rotate(${hidden?-90:0}deg)">expand_more</span>
         <span class="codot" style="background:${c.color};color:${textOn(c.color)}">${esc(c.letter)}</span>
         <span class="display font-semibold flex-1">${esc(c.name)}</span>
@@ -987,9 +938,8 @@ function crewView(p){
     <div class="card p-3 mb-3"><div class="lcaps mb-2">Workload — working days per crew</div><div style="height:230px"><canvas id="crewChart"></canvas></div></div>
     <div class="card p-3 mb-3"><div class="lcaps mb-2">Crew conflicts</div><div class="space-y-1.5">${confCards}</div></div>
     <div class="flex items-center gap-2 mb-2"><div class="lcaps">Tasks by crew</div><span class="text-xs text-white/35">— click a status bubble to mark done · click a crew header to show/hide</span></div>
-    <div class="grid md:grid-cols-2 gap-3 mb-5">${groups}</div>
-    <div class="display font-semibold text-base mb-2 flex items-center gap-2"><span class="ms" style="color:var(--blue)">tune</span>Crew settings <span class="text-xs text-white/40 font-normal">— companies, holidays, and how long each crew's tasks take</span></div>
-    ${settingsView(p)}`;
+    <div class="grid md:grid-cols-2 gap-3 mb-2">${groups}</div>
+    <div class="text-xs text-white/35">Crews, holidays, and the cycle template live in <span class="cursor-pointer underline" onclick="setNav('settings')">Settings</span> <span class="ms text-[13px]">settings</span>.</div>`;
 }
 function drawCrewChart(){
   const p=activeProject(); const wl=crewWorkload(p);
@@ -1004,7 +954,7 @@ function drawCrewChart(){
 function progressView(p){
   const tasks=Object.entries(p.tasks).map(([tid,t])=>({tid,...t,r:state.resolved[tid]})).filter(x=>x.r);
   const cnt={todo:0,doing:0,done:0}; let totWd=0, doneWd=0;
-  tasks.forEach(t=>{ cnt[taskStatus(t)]++; const wd=workingDaysBetween(t.r.start,t.r.finish,state.holidays).length; totWd+=wd; if(taskStatus(t)==='done') doneWd+=wd; });
+  tasks.forEach(t=>{ cnt[taskStatus(t)]++; const wd=Number(t.days)||0; totWd+=wd; if(taskStatus(t)==='done') doneWd+=wd; });
   const pct=totWd?Math.round(doneWd/totWd*100):0;
   const list=tasks.sort((a,b)=>a.r.start.localeCompare(b.r.start)).map(t=>{
     const c=state.companies[t.companyId]||{color:'#888',letter:'?'};
@@ -1037,7 +987,7 @@ function drawProgressCharts(){
   const days=ganttWindow(p); const labels=[],planned=[],actual=[];
   const tasks=Object.entries(p.tasks).map(([tid,t])=>({tid,...t,r:state.resolved[tid]})).filter(x=>x.r);
   days.forEach((d,i)=>{ if(i%3!==0 && i!==days.length-1) return; let pl=0,ac=0;
-    tasks.forEach(t=>{ const wd=workingDaysBetween(t.r.start,t.r.finish,state.holidays).length; if(t.r.finish<=d){ pl+=wd; if(taskStatus(t)==='done') ac+=wd; } });
+    tasks.forEach(t=>{ const wd=Number(t.days)||0; if(t.r.finish<=d){ pl+=wd; if(taskStatus(t)==='done') ac+=wd; } });
     labels.push(fmtMD(d)); planned.push(pl); actual.push(ac); });
   drawChart('sCurve',{ type:'line',
     data:{ labels, datasets:[
@@ -1052,11 +1002,13 @@ let chartReg={};
 function ensureChart(){ if(window.Chart) return Promise.resolve(); return loadScript('https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js').then(()=>{ if(window.Chart){ window.Chart.defaults.animation=false; window.Chart.defaults.font.family='Inter'; window.Chart.defaults.color='#97a6bb'; } }); }
 function drawChart(id,cfg){ const cv=document.getElementById(id); if(!cv||!window.Chart) return; if(chartReg[id]) chartReg[id].destroy(); chartReg[id]=new window.Chart(cv.getContext('2d'),cfg); }
 function afterRender(){
+  _gLeft=document.getElementById('ganttLeft'); _gRight=document.getElementById('ganttRight');   // refresh cached panes for hot handlers
   if(state.nav==='tools'){ if(state.tools.tab!=='list') ensureChart().then(drawToolsCharts); return; }
   if(state.nav!=='schedule') return;
   if(state.view==='build'){
     if(state.gFit) fitGantt();
-    const gr=document.getElementById('ganttRight');
+    filterGantt();                                  // re-apply the live search filter to the freshly built rows
+    const gr=_gRight;
     if(gr){
       const pid=activeId();
       if(gCenteredPid!==pid){                       // first open of this schedule → land on today
@@ -1067,22 +1019,29 @@ function afterRender(){
       }
     }
   }
+  else if(state.view==='lookahead') filterLA();
   else if(state.view==='crew') ensureChart().then(()=>{ drawCrewChart(); });
   else if(state.view==='progress') ensureChart().then(drawProgressCharts);
 }
 
 /* ============================================================ SETTINGS */
+function settingsPage(){
+  const p=activeProject();
+  return `<div class="max-w-[1100px] mx-auto px-4 py-4">
+    <div class="display font-bold text-lg mb-3 flex items-center gap-2"><span class="ms" style="color:var(--primary)">settings</span>Settings <span class="text-xs text-white/40 font-normal">— project setup, companies, holidays, and the cycle template</span></div>
+    ${settingsView(p)}</div>`;
+}
 function settingsView(p){
   return `<div class="space-y-4">
     <div class="card p-4">
       <div class="display font-semibold mb-3">Project</div>
-      <div class="grid sm:grid-cols-3 gap-3">
+      <div class="grid sm:grid-cols-2 gap-3">
         <label class="text-xs text-white/50">Name<input class="fld w-full mt-1" value="${esc(p.name)}" onchange="activeProject().name=this.value; render(); saveActive()"></label>
         <label class="text-xs text-white/50">Subtitle<input class="fld w-full mt-1" value="${esc(p.subtitle||'')}" onchange="activeProject().subtitle=this.value; saveActive()"></label>
         <label class="text-xs text-white/50">Anchor start<input class="fld w-full mt-1" type="date" value="${esc(p.startDate)}" onchange="activeProject().startDate=this.value; recomputeActive(); render(); saveActive()"></label>
+        <label class="text-xs text-white/50">Org / company <span class="text-white/30">(PDF header — optional)</span><input class="fld w-full mt-1" value="${esc(p.org||'')}" placeholder="e.g. Webcor Concrete" onchange="activeProject().org=this.value; saveActive()"></label>
       </div>
       <div class="mt-3 flex gap-2">
-        <button class="btn btn-ghost btn-sm" onclick="newProject()"><span class="ms text-[16px]">add</span>New project</button>
         <button class="btn btn-ghost btn-sm" onclick="syncPours()"><span class="ms text-[16px]">sync</span>Sync pours from Cup (${Object.keys(state.pours).length})</button>
       </div>
     </div>
@@ -1155,12 +1114,15 @@ function syncPours(){
 function closeModal(){ $('#modal').innerHTML=''; }
 function openInsertCycle(){
   const p=activeProject();
-  const tplOpts=Object.entries(state.templates).map(([id,t])=>`<option value="${id}">${esc(t.name)}</option>`).join('');
+  const tEntries=Object.entries(state.templates);
+  const tplField = tEntries.length>1
+    ? `<label class="text-xs text-white/50 block mb-2">Template<select id="icTpl" class="fld w-full mt-1">${tEntries.map(([id,t])=>`<option value="${id}">${esc(t.name)}</option>`).join('')}</select></label>`
+    : `<input type="hidden" id="icTpl" value="${tEntries[0]?tEntries[0][0]:''}"><div class="text-xs text-white/50 mb-2">Template <span class="text-white/80">${esc(tEntries[0]?tEntries[0][1].name:'—')}</span></div>`;
   const taskOpts=['<option value="">— none (start on a date) —</option>'].concat(
     sectionList(p).flatMap(s=>tasksOf(p,s.id).map(t=>`<option value="${t.id}">${esc(s.name)} › ${esc(t.name)}</option>`))).join('');
   $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card p-5 w-full max-w-md">
     <div class="display font-semibold text-lg mb-3">Insert Cycle</div>
-    <label class="text-xs text-white/50 block mb-2">Template<select id="icTpl" class="fld w-full mt-1">${tplOpts}</select></label>
+    ${tplField}
     <label class="text-xs text-white/50 block mb-2">New section name<input id="icName" class="fld w-full mt-1" value="Grid line — Pile caps"></label>
     <label class="text-xs text-white/50 block mb-2">Start after task (chain)<select id="icChain" class="fld w-full mt-1" onchange="document.getElementById('icDateWrap').style.display=this.value?'none':'block'">${taskOpts}</select></label>
     <div id="icDateWrap"><label class="text-xs text-white/50 block mb-3">First task start<input id="icDate" class="fld w-full mt-1" type="date" value="${esc(p.startDate)}"></label></div>
@@ -1216,6 +1178,8 @@ async function sharePdf(blob, filename){
   const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },200);
 }
 
+/* filename slug from the schedule name (replaces the old hard-coded LACC_ prefix) */
+function slugName(p){ return ((p&&p.name)||'Schedule').trim().replace(/[^\w]+/g,'_').replace(/^_+|_+$/g,'')||'Schedule'; }
 /* build the row model shared by PDF + XLSX */
 function scheduleRows(p){
   const rows=[]; // {type:'section'|'task', ...}
@@ -1244,16 +1208,15 @@ async function exportPDF(mode){
   else { const perPage=Math.floor((792 - 2*MARGIN - labelTotal)/DAYW); chunks=[]; for(let i=0;i<days.length;i+=perPage) chunks.push(days.slice(i,i+perPage)); }
 
   function drawHeaderBlock(doc, pageW){
-    // Webcor wordmark
-    doc.setFont('helvetica','bold'); doc.setFontSize(20); doc.setTextColor(63,165,53);
-    doc.text('WEBCOR', MARGIN, 34);
-    doc.setTextColor(120,170,110); doc.setFontSize(13); doc.text('CONCRETE', MARGIN+98, 34);
+    // optional org/company wordmark (set in Settings) — no hard-coded branding
+    const org=(p.org||'').trim();
+    if(org){ doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.setTextColor(47,128,237); doc.text(org.toUpperCase(), MARGIN, 34); }
     // title
     doc.setTextColor(20,28,40); doc.setFont('helvetica','bold'); doc.setFontSize(15);
     doc.text(p.name+' — '+(p.subtitle||'Look Ahead Schedule'), pageW/2, 26, {align:'center'});
     doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90,100,115);
     doc.text('Exported '+today, pageW-MARGIN, 26, {align:'right'});
-    doc.setDrawColor(63,165,53); doc.setLineWidth(1.2); doc.line(MARGIN, 40, pageW-MARGIN, 40);
+    doc.setDrawColor(47,128,237); doc.setLineWidth(1.2); doc.line(MARGIN, 40, pageW-MARGIN, 40);
     // legend
     let lx=MARGIN, ly=54; doc.setFontSize(8);
     companyList().forEach(c=>{
@@ -1317,7 +1280,7 @@ async function exportPDF(mode){
     });
   });
   const blob=doc.output('blob');
-  const stamp=today.split('-'); await sharePdf(blob, `LACC_Look_Ahead_${stamp[1]}.${stamp[2]}.${stamp[0]}.pdf`);
+  const stamp=today.split('-'); await sharePdf(blob, `${slugName(p)}_${stamp[1]}.${stamp[2]}.${stamp[0]}.pdf`);
   toast('PDF ready','ok');
 }
 
@@ -1336,7 +1299,7 @@ async function exportXLSX(){
   XLSX.utils.book_append_sheet(wb, wsC, 'Companies');
   XLSX.utils.book_append_sheet(wb, wsH, 'Holidays');
   const today=fmtYMD(new Date()).split('-');
-  XLSX.writeFile(wb, `LACC_Look_Ahead_${today[1]}.${today[2]}.${today[0]}.xlsx`);
+  XLSX.writeFile(wb, `${slugName(p)}_${today[1]}.${today[2]}.${today[0]}.xlsx`);
   toast('Excel ready','ok');
 }
 
@@ -1559,9 +1522,10 @@ function attStep(dir){ const i=state.att.dates.indexOf(state.att.date); const j=
 
 /* ============================================================ TOOLS (reads tool-tracker/) */
 function ensureTools(){
-  if(state.tools.loaded){ render(); return; }
+  if(state.tools.loaded || state.tools.loading){ render(); return; }   // loading guard: don't attach a second listener pair on a quick nav away-and-back
   if(!db){ render(); return; }
-  db.ref('tool-tracker/assets').on('value', s=>{ state.tools.assets=s.val()||{}; state.tools.loaded=true; if(state.nav==='tools') render(); });
+  state.tools.loading=true;
+  db.ref('tool-tracker/assets').on('value', s=>{ state.tools.assets=s.val()||{}; state.tools.loaded=true; state.tools.loading=false; if(state.nav==='tools') render(); });
   db.ref('tool-tracker/config').on('value', s=>{ state.tools.config=s.val()||{}; if(state.nav==='tools') render(); });
 }
 function ensureInfoflow(){
@@ -1614,7 +1578,7 @@ function toolsView(){
   const imp=state.tools.config?.lastImportFile||'—';
   const isList=state.tools.tab==='list';
   const seg=`<div class="seg mb-3">
-    <div class="tabbtn flex items-center gap-1 ${!isList?'on':''}" onclick="state.tools.tab='dash'; render(); afterRender()"><span class="ms text-[16px]">grid_view</span><span class="hidden sm:inline">Dashboard</span></div>
+    <div class="tabbtn flex items-center gap-1 ${!isList?'on':''}" onclick="state.tools.tab='dash'; render()"><span class="ms text-[16px]">grid_view</span><span class="hidden sm:inline">Dashboard</span></div>
     <div class="tabbtn flex items-center gap-1 ${isList?'on':''}" onclick="state.tools.tab='list'; render()"><span class="ms text-[16px]">list</span><span class="hidden sm:inline">Inventory</span></div>
   </div>`;
   const summary=`<div class="flex gap-2 mb-3 flex-wrap">
@@ -1655,8 +1619,8 @@ function toolsDashSection(all){
   const cat={}; all.forEach(a=>{ const k=toolGroup(a); cat[k]=cat[k]||{n:0,onsite:0,monthly:0}; cat[k].n++; if(a.status==='On Site'){ cat[k].onsite++; cat[k].monthly+=(Number(a.unit_cost)||0)*(Number(a.qty)||1); } });
   const cats=Object.entries(cat).sort((a,b)=>b[1].n-a[1].n);
   const groupToggle=`<div class="seg ml-auto">
-    <div class="tabbtn ${!byBrand?'on':''}" onclick="state.tools.groupBy='category'; render(); afterRender()">Category</div>
-    <div class="tabbtn ${byBrand?'on':''}" onclick="state.tools.groupBy='brand'; render(); afterRender()">Brand</div></div>`;
+    <div class="tabbtn ${!byBrand?'on':''}" onclick="state.tools.groupBy='category'; render()">Category</div>
+    <div class="tabbtn ${byBrand?'on':''}" onclick="state.tools.groupBy='brand'; render()">Brand</div></div>`;
   const catCards=cats.map(([k,v])=>`<div class="card p-3 cursor-pointer" onclick="state.tools.tab='list'; state.tools.q='${esc(k).replace(/'/g,'')}'; render()" title="View ${esc(k)} in inventory">
     <div class="lcaps mb-1 truncate" style="font-size:10px">${esc(k)}</div>
     <div class="display font-bold text-xl">${v.n}</div>
@@ -1808,7 +1772,7 @@ function openAnn(id){
   if(!requireUnlock()) return;
   const a=id?{...state.infoflow.ann[id]}:{ title:'',body:'',topic:(state.infoflow.subject||ifTopics()[0]||'General'),pinned:false,docIds:[],link:'' };
   const topicOpts=ifTopics().map(t=>`<option ${t===a.topic?'selected':''}>${esc(t)}</option>`).join('');
-  const docOpts=Object.entries(state.infoflow.docs||{}).map(([did,d])=>`<label class="flex items-center gap-2 text-sm py-0.5"><input type="checkbox" value="${did}" ${(a.docIds||[]).includes(did)?'checked':''} class="ifDoc"> ${esc(d.title)}</label>`).join('') || '<div class="text-xs text-white/40">No documents yet — add some in the Documents tab.</div>';
+  const docOpts=Object.entries(state.infoflow.docs||{}).map(([did,d])=>`<label class="flex items-center gap-2 text-sm py-0.5"><input type="checkbox" value="${did}" ${(a.docIds||[]).includes(did)?'checked':''} class="ifDoc"> ${esc(d.title)}</label>`).join('') || '<div class="text-xs text-white/40">No documents yet — add some in the Documents section.</div>';
   $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-5 w-full max-w-lg">
     <div class="display font-semibold text-lg mb-3">${id?'Edit':'Post'} information</div>
     <input id="annTitle" class="fld w-full mb-2" placeholder="Title (e.g. Elevator embed delivery update)" value="${esc(a.title)}">
@@ -1927,10 +1891,10 @@ function shellMsg(icon,title,sub){ return `<div class="max-w-[1500px] mx-auto px
 
 /* ============================================================ BOOT */
 function boot(){
-  loadLocal(); ensureActive(); recomputeActive(); render();
+  loadLocal(); ensureActive(); recomputeActive(); renderNow();
   if(initFirebase()){ state.online=true; attachListeners(); seedIfNeeded().catch(e=>console.warn(e)); }
   else { state.online=false; }
-  render();
+  renderNow();
   document.addEventListener('keydown', e=>{
     if(e.key==='Escape' && state.gFull){ state.gFull=false; render(); return; }
     const tag=(e.target&&e.target.tagName||'').toLowerCase();
@@ -1940,8 +1904,9 @@ function boot(){
     if(mod && k==='s'){ e.preventDefault(); if(document.activeElement&&document.activeElement.blur) document.activeElement.blur(); saveNow({manual:true}); return; }   // ⌘/Ctrl+S → save
     if(!mod && !typing && k==='v' && state.nav==='schedule' && state.view==='build' && state.showTimeline){ e.preventDefault(); state.gPan=!state.gPan; if(!state.gPan) ganttCrossHide(); render(); return; }   // v → toggle Pan
     if(!mod) return;
-    if(k==='z' && state.nav==='schedule'){ e.preventDefault(); e.shiftKey?redo():undo(); }
-    else if(k==='y' && state.nav==='schedule'){ e.preventDefault(); redo(); }
+    const sched = state.nav==='schedule'||state.nav==='settings';
+    if(k==='z' && sched){ e.preventDefault(); e.shiftKey?redo():undo(); }
+    else if(k==='y' && sched){ e.preventDefault(); redo(); }
   });
   setInterval(()=>{ if(state.online && state.dirty && (state.pending||0) > 5) saveNow({auto:true}); }, 5*60*1000);   // auto-save every 5 min once >5 changes pile up
   window.addEventListener('beforeunload', e=>{ if(state.dirty && state.online) saveNow({force:true}); });           // best-effort flush on close

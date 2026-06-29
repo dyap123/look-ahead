@@ -363,6 +363,16 @@ function saveActive(){
   try{ localStorage.setItem('la_dirty','1'); }catch(e){}   // so a reload knows local is ahead of cloud
   refreshSaveUI();
 }
+/* Debounced variant for hot paths (status toggles): the Save chip + unsaved tracking update
+   instantly, but the heavy saveLocal() JSON.stringify is deferred and coalesced. */
+let _saveT=null;
+function scheduleSave(){
+  state.dirty=true; state.pending=(state.pending||0)+1;
+  try{ localStorage.setItem('la_dirty','1'); }catch(e){}
+  refreshSaveUI();
+  clearTimeout(_saveT); _saveT=setTimeout(()=>{ _saveT=null; saveLocal(); }, 600);
+}
+function flushSave(){ if(_saveT){ clearTimeout(_saveT); _saveT=null; } saveLocal(); }
 function saveNow(opts){
   opts=opts||{};
   saveLocal();
@@ -397,7 +407,13 @@ let gScroll={left:0,top:0}, gCenteredPid=null;   // remember timeline scroll acr
 let _gLeft=null, _gRight=null;                   // cached gantt panes (refreshed each render) so hot scroll/pan handlers skip getElementById
 let _ganttDays=null;                             // the day (YMD) per timeline column of the current render — lets day edits repaint in place
 function snapProject(){ const pid=activeId(); return { pid, data: JSON.stringify(state.projects[pid]||{}) }; }
-function pushUndo(){ if(!activeId()) return; undoStack.push(snapProject()); if(undoStack.length>60) undoStack.shift(); redoStack=[]; }
+function pushUndo(){ state._stBurst=0; if(!activeId()) return; undoStack.push(snapProject()); if(undoStack.length>60) undoStack.shift(); redoStack=[]; }
+/* Coalesce a rapid burst of status toggles into ONE undo snapshot (taken before the first toggle)
+   — avoids a stringify per click on weak CPUs. Any non-status edit calls pushUndo (zeroing the
+   burst), so the next toggle snapshots fresh; one undo reverts the whole burst. */
+function statusUndo(){ const now=Date.now();
+  if(!(state._stBurst && now-state._stBurst<1000)) pushUndo();
+  state._stBurst=now; }
 function applySnap(s){ state.projects[s.pid]=JSON.parse(s.data); state.meta.activeProjectId=s.pid; recomputeActive(); render(); saveActive(); }
 function undo(){ if(!undoStack.length) return toast('Nothing to undo','warn'); redoStack.push(snapProject()); applySnap(undoStack.pop()); toast('Undone'); }
 function redo(){ if(!redoStack.length) return toast('Nothing to redo','warn'); undoStack.push(snapProject()); applySnap(redoStack.pop()); toast('Redone'); }
@@ -779,6 +795,36 @@ function repaintRow(tr, t, s0, f0){
     if(td.textContent!==txt) td.textContent=txt;
   }
 }
+/* Reflect a status change in the Build Gantt with NO full rebuild — mutate only the affected
+   bubble(s), name strikethrough, section "N/total" count, and (if bars are colored by status)
+   the timeline row. Returns false when we're not in a patchable context (Crew/Progress/modal,
+   collapsed section, missing pane) so the caller falls back to a full render(). Status never
+   feeds computeProject, so no dates move and no recompute is needed. */
+function patchStatusInPlace(tids){
+  if(state.nav!=='schedule' || state.view!=='build') return false;
+  const L=_gLeft, R=_gRight; if(!L) return false;
+  const p=activeProject(); const filt=state.gFilter; const byStatus=state.gColor==='status';
+  const secs=new Set();
+  for(const tid of tids){
+    const t=p.tasks[tid]; if(!t) continue;
+    const lr=L.querySelector('tr[data-tid="'+tid+'"]'); if(!lr) return false;
+    const st=statusMeta(taskStatus(t)); const done=taskStatus(t)==='done';
+    const btn=lr.querySelector('.l-bub .statusdot');
+    if(btn){ btn.style.color=st.color; btn.title=st.label+' — click to advance · shift-click a range';
+             const ic=btn.querySelector('.ms'); if(ic&&ic.textContent!==st.icon) ic.textContent=st.icon; }
+    const inp=lr.querySelector('.l-task input');
+    if(inp){ inp.style.textDecoration=done?'line-through':''; inp.style.opacity=done?'.55':''; }
+    if(byStatus && R){ const rr=R.querySelector('tr[data-tid="'+tid+'"]'); if(rr) repaintRow(rr, t); }
+    secs.add(t.sectionId);
+  }
+  secs.forEach(sid=>{                                   // refresh the section band's "N/total" count
+    const span=L.querySelector('tr[data-band="'+sid+'"] .lcaps'); if(!span) return;
+    const tks=tasksOf(p,sid).filter(t=> filt==='all'||t.companyId===filt);
+    const doneN=tks.filter(t=>taskStatus(t)==='done').length;
+    span.textContent = doneN>0 ? doneN+'/'+tks.length : ''+tks.length;
+  });
+  return true;
+}
 /* Click-and-drag on the timeline: mouse drag sweeps the bar (live preview); a plain click/tap sets
    the end day (tapping the last day shortens by one). Touch drag is left to scroll the pane. */
 function ganttCellDown(e){
@@ -834,7 +880,10 @@ const STATUS=[
 ];
 function taskStatus(t){ return t.status||'todo'; }
 function statusMeta(id){ return STATUS.find(s=>s.id===id)||STATUS[0]; }
-function setTaskStatus(tid,st){ const p=activeProject(); const t=p.tasks[tid]; if(!t)return; pushUndo(); t.status=st; render(); saveActive(); }
+function setTaskStatus(tid,st){ const p=activeProject(); const t=p.tasks[tid]; if(!t)return;
+  statusUndo(); t.status=st;
+  if(!patchStatusInPlace([tid])) render();
+  scheduleSave(); }
 /* Search filters rows in place (toggle display) instead of rebuilding the whole Gantt — the
    input keeps focus/caret natively and nothing re-renders on each keystroke. */
 function gSearchInput(v){ state.gSearch=v; filterGantt(); }
@@ -861,8 +910,10 @@ function bubbleClick(tid, shift){
     if(i>j){ const t=i; i=j; j=t; }
     const target = taskStatus(p.tasks[tid])==='done' ? 'todo' : 'done';   // shift-click toggles the range
     pushUndo();
-    for(let k=i;k<=j;k++){ if(p.tasks[ids[k]]) p.tasks[ids[k]].status=target; }
-    render(); saveActive();
+    const changed=[];
+    for(let k=i;k<=j;k++){ if(p.tasks[ids[k]]){ p.tasks[ids[k]].status=target; changed.push(ids[k]); } }
+    if(!patchStatusInPlace(changed)) render();
+    scheduleSave();
     toast(`${j-i+1} task${j-i?'s':''} marked ${statusMeta(target).label.toLowerCase()}`);
   } else {
     cycleStatus(tid);
@@ -1447,19 +1498,46 @@ function rowsFromPdfLines(lines){
   flush();
   return rows;
 }
+/* Import treats the file as STRUCTURE only — names, durations, companies, sections, and the
+   relative stagger between sections — NOT as fixed calendar dates. We re-anchor the whole
+   schedule to TODAY and chain tasks within each section by working-day duration, so editing a
+   duration ripples downstream (same model as addCycleTo / Insert Cycle). The template's old
+   absolute dates are used only to derive durations and each section's relative offset. */
 function buildScheduleFromRows(name, rows){
   if(!rows.length){ toast('No tasks found to import','warn'); return; }
-  const pid=uid('p_');
-  const starts=rows.map(r=>r.start).filter(Boolean).sort();
-  let anchor=starts[0]; if(!anchor){ anchor=fmtYMD(new Date()); while(dow(anchor)!==1) anchor=addDays(anchor,1); }
-  const proj={ id:pid, name:name||'Imported Schedule', subtitle:'Look Ahead Schedule', startDate:anchor, sections:{}, tasks:{} };
-  const secId={}; let so=0;
-  rows.forEach(r=>{ const sn=(r.section||'Schedule').trim()||'Schedule'; if(!secId[sn]){ const sid=uid('s_'); secId[sn]=sid; proj.sections[sid]={name:sn,order:so++}; } });
-  const ord={};
-  rows.forEach(r=>{ const sn=(r.section||'Schedule').trim()||'Schedule'; const sid=secId[sn]; const o=(ord[sid]=ord[sid]||0); ord[sid]++;
-    let days=r.days; if(!days||days<1) days=(r.start&&r.finish)? workingDaysBetween(r.start,r.finish,state.holidays).length : 1;
-    const tid=uid('t_'); proj.tasks[tid]={ sectionId:sid, order:o, name:r.name||'Task', companyId:resolveCompany(r.company), days, depMode:'manual', start:r.start||anchor, depId:null, lag:0, linkedPourId:null };
+  const hol = state.holidays;
+  const pid = uid('p_');
+  const starts = rows.map(r=>r.start).filter(Boolean).sort();
+  const earliest = starts[0] || null;                 // file's earliest parsed start (null for a dateless/garbage PDF)
+  let start0 = workday(fmtYMD(new Date()), 0, hol);    // anchor to TODAY (or the next working day)
+  const proj = { id:pid, name:name||'Imported Schedule', subtitle:'Look Ahead Schedule', startDate:start0, sections:{}, tasks:{} };
+
+  // sections in first-appearance order; remember each section HEAD's parsed start (for the offset)
+  const secId={}, secHeadStart={}, secOrder=[]; let so=0;
+  rows.forEach(r=>{ const sn=(r.section||'Schedule').trim()||'Schedule';
+    if(!secId[sn]){ const sid=uid('s_'); secId[sn]=sid; proj.sections[sid]={name:sn,order:so++}; secHeadStart[sid]=r.start||null; secOrder.push(sid); }
   });
+
+  // tasks: head of each section = manual (anchored below); the rest chain by duration (afterPrev, NO start)
+  const ord={}, headTid={};
+  rows.forEach(r=>{
+    const sn=(r.section||'Schedule').trim()||'Schedule'; const sid=secId[sn];
+    const o=(ord[sid]=ord[sid]||0); ord[sid]++;
+    let days=r.days; if(!days||days<1) days=(r.start&&r.finish)? workingDaysBetween(r.start,r.finish,hol).length : 1;
+    const tid=uid('t_');
+    proj.tasks[tid]={ sectionId:sid, order:o, name:r.name||'Task', companyId:resolveCompany(r.company), days,
+                      depMode:(o===0?'manual':'afterPrev'), depId:null, lag:0, linkedPourId:null };
+    if(o===0) headTid[sid]=tid;
+  });
+
+  // Variant A — anchor each section head at start0 + its template offset (keeps the stagger, drops absolute dates)
+  secOrder.forEach(sid=>{
+    const head=proj.tasks[headTid[sid]]; if(!head) return;
+    let offset=0; const hs=secHeadStart[sid];
+    if(earliest && hs && hs>=earliest) offset = workingDaysBetween(earliest, hs, hol).length - 1;
+    head.depMode='manual'; head.start = workday(start0, Math.max(0,offset), hol);
+  });
+
   state.projects[pid]=proj; state.meta.activeProjectId=pid; state.nav='schedule'; state.view='build';
   recomputeActive(); render(); saveActive(); saveCompanies();
   toast(`Imported ${Object.keys(proj.tasks).length} tasks into "${proj.name}"`);
@@ -1966,7 +2044,8 @@ function boot(){
     else if(k==='y' && sched){ e.preventDefault(); redo(); }
   });
   setInterval(()=>{ if(state.online && state.dirty && (state.pending||0) > 5) saveNow({auto:true}); }, 5*60*1000);   // auto-save every 5 min once >5 changes pile up
-  window.addEventListener('beforeunload', e=>{ if(state.dirty && state.online) saveNow({force:true}); });           // best-effort flush on close
+  window.addEventListener('beforeunload', e=>{ flushSave(); if(state.dirty && state.online) saveNow({force:true}); }); // flush debounced local write + best-effort cloud push on close
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') flushSave(); });        // reliable flush on mobile/tab-hide
   let rzT=null; window.addEventListener('resize', ()=>{ clearTimeout(rzT); rzT=setTimeout(fitGantt, 120); });
 }
 document.addEventListener('DOMContentLoaded', boot);

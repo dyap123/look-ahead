@@ -1435,12 +1435,19 @@ function resolveCompany(name){
   const id=uid('co_'); state.companies[id]={ name:normCompany(name), letter:normCompany(name).replace(/[^A-Za-z]/g,'').slice(0,2).toUpperCase()||'X', color:palette[Object.keys(state.companies).length%palette.length], order:companyList().length };
   return id;
 }
+let importWb=null;   // last-parsed workbook, kept so the preview's sheet picker can re-parse without re-reading the file
 async function parseSheetRows(file){
   await ensureLibs(); const buf=await file.arrayBuffer();
-  const wb=window.XLSX.read(buf,{type:'array'});
-  const sh=wb.SheetNames.find(n=>/sched/i.test(n))||wb.SheetNames[0];
-  const aoa=window.XLSX.utils.sheet_to_json(wb.Sheets[sh],{header:1,raw:false,defval:''});
-  return { rows:rowsFromAoa(aoa), source:'sheet' };
+  const wb=window.XLSX.read(buf,{type:'array'}); importWb=wb;
+  // WCG workbooks ship a "Schedule Template" page next to the real schedule — never auto-pick a template sheet
+  const pool=wb.SheetNames.filter(n=>!/template/i.test(n));
+  const names=pool.length?pool:wb.SheetNames;
+  const sh=names.find(n=>/sched/i.test(n))||names[0];
+  return { rows:rowsFromSheet(sh), source:'sheet', sheet:sh, sheets:wb.SheetNames };
+}
+function rowsFromSheet(name){
+  const aoa=window.XLSX.utils.sheet_to_json(importWb.Sheets[name],{header:1,raw:false,defval:''});
+  return rowsFromAoa(aoa);
 }
 function rowsFromAoa(aoa){
   if(!aoa.length) return [];
@@ -1455,6 +1462,12 @@ function rowsFromAoa(aoa){
     const name=String(r[ci.name]||'').trim();
     const startV=ci.start>=0?String(r[ci.start]||'').trim():'';
     const daysV=ci.days>=0?String(r[ci.days]||'').trim():'';
+    // calendar header row (day-of-month numbers strung across the timeline) — not a task even when
+    // the Task cell holds text (WCG templates park a label like "L230 Micropiles" on that row)
+    if(!startV && !daysV){
+      const dayNums=r.filter(c=>{const s=String(c).trim(); return /^\d{1,2}$/.test(s)&&+s>=1&&+s<=31;}).length;
+      if(dayNums>=10) continue;
+    }
     const explicitSec=ci.section>=0?String(r[ci.section]||'').trim():'';
     if(explicitSec){ curSection=explicitSec; }
     // a row with only a name (no date/days, no other section concept) is a section band (our own export format)
@@ -1498,18 +1511,22 @@ function rowsFromPdfLines(lines){
   flush();
   return rows;
 }
-/* Import treats the file as STRUCTURE only — names, durations, companies, sections, and the
-   relative stagger between sections — NOT as fixed calendar dates. We re-anchor the whole
-   schedule to TODAY and chain tasks within each section by working-day duration, so editing a
-   duration ripples downstream (same model as addCycleTo / Insert Cycle). The template's old
-   absolute dates are used only to derive durations and each section's relative offset. */
-function buildScheduleFromRows(name, rows){
+/* Import has two modes.
+   keepDates (default when the file has real dates): every dated row becomes a manual task pinned
+   to the file's calendar date — the schedule mirrors the Excel exactly.
+   Otherwise (template mode) the file is STRUCTURE only — names, durations, companies, sections,
+   and the relative stagger between sections. We re-anchor the whole schedule to TODAY and chain
+   tasks within each section by working-day duration, so editing a duration ripples downstream
+   (same model as addCycleTo / Insert Cycle). */
+function buildScheduleFromRows(name, rows, opts){
+  opts=opts||{};
+  const keepDates=!!opts.keepDates;
   if(!rows.length){ toast('No tasks found to import','warn'); return; }
   const hol = state.holidays;
   const pid = uid('p_');
   const starts = rows.map(r=>r.start).filter(Boolean).sort();
   const earliest = starts[0] || null;                 // file's earliest parsed start (null for a dateless/garbage PDF)
-  let start0 = workday(fmtYMD(new Date()), 0, hol);    // anchor to TODAY (or the next working day)
+  let start0 = keepDates && earliest ? earliest : workday(fmtYMD(new Date()), 0, hol);
   const proj = { id:pid, name:name||'Imported Schedule', subtitle:'Look Ahead Schedule', startDate:start0, sections:{}, tasks:{} };
 
   // sections in first-appearance order; remember each section HEAD's parsed start (for the offset)
@@ -1525,13 +1542,18 @@ function buildScheduleFromRows(name, rows){
     const o=(ord[sid]=ord[sid]||0); ord[sid]++;
     let days=r.days; if(!days||days<1) days=(r.start&&r.finish)? workingDaysBetween(r.start,r.finish,hol).length : 1;
     const tid=uid('t_');
-    proj.tasks[tid]={ sectionId:sid, order:o, name:r.name||'Task', companyId:resolveCompany(r.company), days,
-                      depMode:(o===0?'manual':'afterPrev'), depId:null, lag:0, linkedPourId:null };
+    const t={ sectionId:sid, order:o, name:r.name||'Task', companyId:resolveCompany(r.company), days,
+              depMode:(o===0?'manual':'afterPrev'), depId:null, lag:0, linkedPourId:null };
+    if(keepDates){
+      if(r.start){ t.depMode='manual'; t.start=r.start; }        // pin to the file's date
+      else if(o===0){ t.depMode='manual'; t.start=start0; }      // dateless section head — anchor at schedule start
+    }
+    proj.tasks[tid]=t;
     if(o===0) headTid[sid]=tid;
   });
 
-  // Variant A — anchor each section head at start0 + its template offset (keeps the stagger, drops absolute dates)
-  secOrder.forEach(sid=>{
+  // Template mode only — anchor each section head at start0 + its template offset (keeps the stagger, drops absolute dates)
+  if(!keepDates) secOrder.forEach(sid=>{
     const head=proj.tasks[headTid[sid]]; if(!head) return;
     let offset=0; const hs=secHeadStart[sid];
     if(earliest && hs && hs>=earliest) offset = workingDaysBetween(earliest, hs, hol).length - 1;
@@ -1542,7 +1564,7 @@ function buildScheduleFromRows(name, rows){
   recomputeActive(); render(); saveActive(); saveCompanies();
   toast(`Imported ${Object.keys(proj.tasks).length} tasks into "${proj.name}"`);
 }
-let importRows=[], importName='';
+let importRows=[], importName='', importMeta={source:'',sheet:'',sheets:[]};
 function openImport(){
   $('#modal').innerHTML=`<div class="modalwrap" onclick="if(event.target===this)closeModal()"><div class="card glass2 p-5 w-full max-w-lg">
     <div class="display font-semibold text-lg mb-1">Import a schedule</div>
@@ -1564,7 +1586,7 @@ async function handleImportFile(file){
     const ext=(file.name.split('.').pop()||'').toLowerCase();
     const res= ext==='pdf' ? await parsePdfRows(file) : await parseSheetRows(file);
     importRows=res.rows; importName=file.name.replace(/\.[^.]+$/,'');
-    if(!importRows.length){ $('#impResult').innerHTML=`<div class="text-sm" style="color:var(--error)">Couldn't find tasks — make sure the file has Task / Start / Finish columns. For a rendered Gantt PDF, export it to Excel/CSV and import that instead.</div>`; return; }
+    importMeta={ source:res.source, sheet:res.sheet||'', sheets:res.sheets||[] };
     if(res.source==='pdf' && importRows.length<5){
       $('#impResult').innerHTML=`<div class="card p-3" style="border-color:rgba(229,57,53,.45)">
         <div class="flex items-center gap-2 mb-1"><span class="ms" style="color:var(--error)">warning</span><b>This PDF didn't parse cleanly</b></div>
@@ -1572,17 +1594,36 @@ async function handleImportFile(file){
         ${importRows.length?`<button class="btn btn-ghost btn-sm mt-2" onclick="doImport()">Import these ${importRows.length} anyway</button>`:''}
       </div>`; return;
     }
-    const secs=new Set(importRows.map(r=>r.section||'Schedule'));
-    const prev=importRows.slice(0,6).map(r=>`<div class="flex gap-2 text-xs py-0.5"><span class="flex-1 truncate">${esc(r.name)}</span><span class="mono text-white/45">${esc(fmtMD(r.start)||'—')}</span><span class="text-white/45 w-16 text-right truncate">${esc(r.company||'—')}</span></div>`).join('');
-    $('#impResult').innerHTML=`<div class="card p-3">
-      <div class="flex items-center gap-2"><span class="ms" style="color:var(--primary)">check_circle</span><span><b>${importRows.length} tasks</b> · <b>${secs.size} section${secs.size>1?'s':''}</b></span>${res.source==='pdf'?'<span class="text-amber-300 text-xs ml-1">PDF — review after import</span>':''}</div>
-      <label class="text-xs text-white/50 block mt-2">Schedule name<input id="impName" class="fld w-full mt-1" value="${esc(importName)}"></label>
-      <div class="mt-2 border-t border-white/10 pt-2">${prev}${importRows.length>6?`<div class="text-xs text-white/35 mt-1">+${importRows.length-6} more…</div>`:''}</div>
-      <button class="btn btn-green w-full mt-3" onclick="doImport()"><span class="ms">download_done</span>Create schedule</button>
-    </div>`;
+    renderImportPreview();
   }catch(e){ console.error(e); $('#impResult').innerHTML=`<div class="text-sm" style="color:var(--error)">Couldn't read that file: ${esc(e.message||e)}</div>`; }
 }
-function doImport(){ const nm=(document.getElementById('impName')&&document.getElementById('impName').value)||importName; closeModal(); buildScheduleFromRows(nm, importRows); }
+function switchImportSheet(name){
+  try{ importRows=rowsFromSheet(name); importMeta.sheet=name; renderImportPreview(); }
+  catch(e){ console.error(e); $('#impResult').innerHTML=`<div class="text-sm" style="color:var(--error)">Couldn't read sheet "${esc(name)}": ${esc(e.message||e)}</div>`; }
+}
+function renderImportPreview(){
+  const sheetSel = importMeta.sheets.length>1 ? `<label class="text-xs text-white/50 block mt-2">Sheet
+      <select class="fld w-full mt-1" onchange="switchImportSheet(this.value)">${importMeta.sheets.map(n=>`<option value="${esc(n)}" ${n===importMeta.sheet?'selected':''}>${esc(n)}${/template/i.test(n)?' (template)':''}</option>`).join('')}</select>
+    </label>` : '';
+  if(!importRows.length){ $('#impResult').innerHTML=`${sheetSel}<div class="text-sm mt-2" style="color:var(--error)">Couldn't find tasks — make sure the file has Task / Start / Finish columns. For a rendered Gantt PDF, export it to Excel/CSV and import that instead.</div>`; return; }
+  const dated=importRows.filter(r=>r.start).length;
+  const hasDates = dated >= importRows.length/2;    // most rows carry real dates → offer to keep them
+  const secs=new Set(importRows.map(r=>r.section||'Schedule'));
+  const prev=importRows.slice(0,6).map(r=>`<div class="flex gap-2 text-xs py-0.5"><span class="flex-1 truncate">${esc(r.name)}</span><span class="mono text-white/45">${esc(fmtMD(r.start)||'—')}</span><span class="text-white/45 w-16 text-right truncate">${esc(r.company||'—')}</span></div>`).join('');
+  $('#impResult').innerHTML=`<div class="card p-3">
+    <div class="flex items-center gap-2"><span class="ms" style="color:var(--primary)">check_circle</span><span><b>${importRows.length} tasks</b> · <b>${secs.size} section${secs.size>1?'s':''}</b></span>${importMeta.source==='pdf'?'<span class="text-amber-300 text-xs ml-1">PDF — review after import</span>':''}</div>
+    ${sheetSel}
+    <label class="text-xs text-white/50 block mt-2">Schedule name<input id="impName" class="fld w-full mt-1" value="${esc(importName)}"></label>
+    ${hasDates?`<label class="flex items-center gap-2 text-xs text-white/70 mt-2 cursor-pointer"><input id="impKeepDates" type="checkbox" checked> Use dates from the file (uncheck to re-anchor everything to today)</label>`:''}
+    <div class="mt-2 border-t border-white/10 pt-2">${prev}${importRows.length>6?`<div class="text-xs text-white/35 mt-1">+${importRows.length-6} more…</div>`:''}</div>
+    <button class="btn btn-green w-full mt-3" onclick="doImport()"><span class="ms">download_done</span>Create schedule</button>
+  </div>`;
+}
+function doImport(){
+  const nm=(document.getElementById('impName')&&document.getElementById('impName').value)||importName;
+  const kd=document.getElementById('impKeepDates'); const keepDates=!!(kd&&kd.checked);
+  closeModal(); buildScheduleFromRows(nm, importRows, {keepDates});
+}
 
 /* ============================================================ ATTENDANCE (reads foreman-attendance/) */
 function ensureAttendance(){

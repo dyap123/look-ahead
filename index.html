@@ -1438,7 +1438,7 @@ function resolveCompany(name){
 let importWb=null;   // last-parsed workbook, kept so the preview's sheet picker can re-parse without re-reading the file
 async function parseSheetRows(file){
   await ensureLibs(); const buf=await file.arrayBuffer();
-  const wb=window.XLSX.read(buf,{type:'array'}); importWb=wb;
+  const wb=window.XLSX.read(buf,{type:'array',cellStyles:true}); importWb=wb;   // cellStyles → row hidden flags in ws['!rows']
   // WCG workbooks ship a "Schedule Template" page next to the real schedule — never auto-pick a template sheet
   const pool=wb.SheetNames.filter(n=>!/template/i.test(n));
   const names=pool.length?pool:wb.SheetNames;
@@ -1446,8 +1446,13 @@ async function parseSheetRows(file){
   return { rows:rowsFromSheet(sh), source:'sheet', sheet:sh, sheets:wb.SheetNames };
 }
 function rowsFromSheet(name){
-  const aoa=window.XLSX.utils.sheet_to_json(importWb.Sheets[name],{header:1,raw:false,defval:''});
-  return rowsFromAoa(aoa);
+  const ws=importWb.Sheets[name];
+  const aoa=window.XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:'',blankrows:true});
+  // WCG hides completed activities in Excel instead of deleting them — don't import hidden rows
+  const rp=ws['!rows']||[];
+  const r0=window.XLSX.utils.decode_range(ws['!ref']||'A1').s.r;   // aoa[0] = sheet row r0
+  const vis=aoa.filter((_,i)=>!(rp[i+r0]&&rp[i+r0].hidden));
+  return rowsFromAoa(vis);
 }
 function rowsFromAoa(aoa){
   if(!aoa.length) return [];
@@ -1540,7 +1545,11 @@ function buildScheduleFromRows(name, rows, opts){
   rows.forEach(r=>{
     const sn=(r.section||'Schedule').trim()||'Schedule'; const sid=secId[sn];
     const o=(ord[sid]=ord[sid]||0); ord[sid]++;
-    let days=r.days; if(!days||days<1) days=(r.start&&r.finish)? workingDaysBetween(r.start,r.finish,hol).length : 1;
+    // keepDates: trust the file's start→finish span (its Days column counts CALENDAR days —
+    // weekends/holidays included — while the engine treats days as WORKING days)
+    let days;
+    if(keepDates && r.start && r.finish) days=workingDaysBetween(r.start,r.finish,hol).length||1;
+    else { days=r.days; if(!days||days<1) days=(r.start&&r.finish)? workingDaysBetween(r.start,r.finish,hol).length : 1; }
     const tid=uid('t_');
     const t={ sectionId:sid, order:o, name:r.name||'Task', companyId:resolveCompany(r.company), days,
               depMode:(o===0?'manual':'afterPrev'), depId:null, lag:0, linkedPourId:null };

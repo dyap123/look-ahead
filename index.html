@@ -127,11 +127,13 @@
   /* sticky headers within each pane's own scroll, sticky section bands below */
   .gleft-tbl thead th{ position:sticky; top:0; z-index:5; background:#0f1722; height:48px; vertical-align:middle; }
   .gright-tbl thead tr:first-child th{ position:sticky; top:0; z-index:5; background:#0f1722; }
-  .gright-tbl thead tr:last-child th{ position:sticky; top:22px; z-index:5; background:#0f1722; }
-  .gright-tbl .m-head{ height:22px; }
+  .gright-tbl thead tr:last-child th{ position:sticky; top:var(--mheadh,22px); z-index:5; background:#0f1722; }
+  .gright-tbl .m-head{ height:22px; line-height:1; }
+  .gright-tbl thead th.day{ line-height:1.05; }
+  .gright-tbl thead th.day > div{ line-height:1.2; }
   .gantt .wknd{ background:rgba(137,148,130,.12); }
   .gantt .hol{ background:rgba(255,180,171,.14); }
-  .gantt .secband td{ background:#16243a; color:#dbe1ff; font-weight:700; padding:3px 6px; height:var(--bandh,38px); position:sticky; top:48px; z-index:4; border-left:3px solid var(--blue-c); }
+  .gantt .secband td{ background:#16243a; color:#dbe1ff; font-weight:700; padding:3px 6px; height:var(--bandh,38px); position:sticky; top:var(--headh,48px); z-index:4; border-left:3px solid var(--blue-c); }
   .gantt.fitv .secband td{ padding-top:1px; padding-bottom:1px; }
   .gantt .today{ box-shadow:inset 2px 0 0 var(--blue); }
   .gantt td.gcell{ cursor:pointer; }
@@ -701,6 +703,26 @@ function ganttPanel(p){
   </div>`;
 }
 function syncGanttScroll(){ const l=_gLeft||document.getElementById('ganttLeft'), r=_gRight||document.getElementById('ganttRight'); if(l&&r) l.scrollTop=r.scrollTop; }
+/* The left list rows hold inputs / selects / icon buttons whose real height varies by platform and
+   font, while timeline rows are bare day cells — any per-row difference compounds into vertical
+   drift between the panes as you scroll. After each render, measure every row pair and pin both
+   rows to the taller height, and pin the left header (nominal 48px) to the right header's real
+   height. Sticky offsets follow via --headh / --mheadh. Reads are batched before writes. */
+function alignGanttRows(){
+  const L=_gLeft||document.getElementById('ganttLeft'), R=_gRight||document.getElementById('ganttRight'); if(!L||!R) return;
+  const lb=L.querySelector('tbody'), rb=R.querySelector('tbody'); if(!lb||!rb) return;
+  const lr=lb.rows, rr=rb.rows, n=Math.min(lr.length, rr.length);
+  const lths=L.querySelectorAll('thead th'), rthead=R.querySelector('thead');
+  for(let i=0;i<n;i++){ if(lr[i].style.height) lr[i].style.height=''; if(rr[i].style.height) rr[i].style.height=''; }
+  lths.forEach(th=>{ if(th.style.height) th.style.height=''; });
+  const hh=rthead?Math.ceil(rthead.getBoundingClientRect().height):48;
+  const mh=rthead&&rthead.rows[0]?Math.ceil(rthead.rows[0].getBoundingClientRect().height):22;
+  const hs=new Array(n);
+  for(let i=0;i<n;i++) hs[i]=Math.max(lr[i].getBoundingClientRect().height, rr[i].getBoundingClientRect().height);
+  lths.forEach(th=>{ th.style.height=hh+'px'; });
+  [L,R].forEach(pane=>{ const t=pane.querySelector('table'); if(t){ t.style.setProperty('--headh',hh+'px'); t.style.setProperty('--mheadh',mh+'px'); } });
+  for(let i=0;i<n;i++){ const h=Math.ceil(hs[i]); if(!h) continue; const px=h+'px'; lr[i].style.height=px; rr[i].style.height=px; }
+}
 function ganttWheel(e){ const r=_gRight||document.getElementById('ganttRight'); if(r){ r.scrollTop+=e.deltaY; if(e.cancelable) e.preventDefault(); } }
 function startPan(e){
   if(e.button!==undefined && e.button!==0) return;
@@ -772,6 +794,7 @@ function fitGantt(){
     bandh=Math.max(20, Math.min(38, rowh+3));
   }
   [tbl, ltbl].forEach(t=>{ if(!t)return; t.style.setProperty('--rowh', rowh+'px'); t.style.setProperty('--bandh', bandh+'px'); t.classList.toggle('fitv', rowh<28); });
+  alignGanttRows();   // --rowh changed → re-equalize the row pairs (covers the resize/column-drag callers too)
 }
 /* Repaint ONE task's timeline cells in place (start/finish may be overridden for a live drag preview).
    Mirrors the cell logic in ganttPanel but mutates existing <td>s — no innerHTML rebuild. */
@@ -1118,6 +1141,7 @@ function afterRender(){
   if(state.view==='build'){
     if(state.gFit) fitGantt();
     filterGantt();                                  // re-apply the live search filter to the freshly built rows
+    alignGanttRows();                               // equalize left/right row + header heights so the panes can't drift
     const gr=_gRight;
     if(gr){
       const pid=activeId();
@@ -2096,7 +2120,7 @@ function boot(){
   setInterval(()=>{ if(state.online && state.dirty && (state.pending||0) > 5) saveNow({auto:true}); }, 5*60*1000);   // auto-save every 5 min once >5 changes pile up
   window.addEventListener('beforeunload', e=>{ flushSave(); if(state.dirty && state.online) saveNow({force:true}); }); // flush debounced local write + best-effort cloud push on close
   document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') flushSave(); });        // reliable flush on mobile/tab-hide
-  let rzT=null; window.addEventListener('resize', ()=>{ clearTimeout(rzT); rzT=setTimeout(fitGantt, 120); });
+  let rzT=null; window.addEventListener('resize', ()=>{ clearTimeout(rzT); rzT=setTimeout(()=>{ state.gFit?fitGantt():alignGanttRows(); }, 120); });
 }
 document.addEventListener('DOMContentLoaded', boot);
 </script>

@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Saira:wght@600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
 <!-- Material Symbols subset to only the icons this app uses (full font is ~300KB; this is a fraction). display=block avoids flashing the icon-name text while loading. -->
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=add,add_circle,add_link,architecture,arrow_back,arrow_downward,arrow_upward,article,bolt,calendar_month,calendar_view_month,calendar_view_week,campaign,category,check_circle,chevron_left,chevron_right,close,cloud_done,cloud_off,content_copy,create_new_folder,delete,description,download,download_done,edit,edit_note,elevator,event,expand_less,expand_more,fact_check,fit_screen,folder_open,foundation,fullscreen,fullscreen_exit,grid_4x4,grid_view,groups,handyman,health_and_safety,help_center,highlight_alt,hourglass_top,how_to_reg,insights,inventory_2,ios_share,library_add,link,list,lock,lock_open,open_in_new,pan_tool,pause,payments,pending,picture_as_pdf,play_arrow,plumbing,polyline,push_pin,radio_button_unchecked,redo,remove,report,route,save,schedule,science,search,settings,skip_next,skip_previous,straighten,sync,table_view,task_alt,touch_app,tune,undo,unfold_less,unfold_more,upload_file,verified,view_list,warning,zoom_in,zoom_out&display=block" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=add,add_circle,add_link,architecture,arrow_back,arrow_downward,arrow_upward,article,bolt,calendar_month,calendar_view_month,calendar_view_week,campaign,category,check_circle,chevron_left,chevron_right,close,cloud_done,cloud_off,content_copy,create_new_folder,delete,description,download,download_done,edit,edit_note,elevator,event,expand_less,expand_more,fact_check,fiber_manual_record,fit_screen,folder_open,foundation,fullscreen,fullscreen_exit,grid_4x4,grid_view,groups,handyman,health_and_safety,help_center,highlight_alt,hourglass_top,how_to_reg,insights,inventory_2,ios_share,library_add,link,list,lock,lock_open,open_in_new,pan_tool,pause,payments,pending,picture_as_pdf,play_arrow,plumbing,polyline,push_pin,radio_button_unchecked,redo,remove,report,route,save,schedule,science,search,settings,skip_next,skip_previous,straighten,sync,table_view,task_alt,touch_app,tune,undo,unfold_less,unfold_more,upload_file,verified,videocam,view_list,warning,zoom_in,zoom_out&display=block" rel="stylesheet" />
 <link rel="stylesheet" href="assets/tw.css" />
 <!-- Firebase compat (defer: not render-blocking; boot() runs on DOMContentLoaded, after these execute) -->
 <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -174,6 +174,7 @@
   .la-chip .truncate{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .modalwrap{ position:fixed; inset:0; background:rgba(0,0,0,.66); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px; }
   .toast{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); padding:10px 16px; border-radius:8px; font-weight:600; font-size:13px; z-index:80; box-shadow:0 10px 30px -10px #000; }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.3} }
 </style>
 </head>
 <body>
@@ -194,7 +195,7 @@ const state = {
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
   infoflow: { ann:{}, docs:{}, facts:{}, config:{}, loaded:false, loading:false, subject:null, unlocked:(localStorage.getItem('la_if_unlocked')==='1') },
   seq: { maps:{}, mapId:null, loaded:false, loading:false, dragging:false, sel:null, routeCrew:null,
-         tool:'none', layer:'all', mode:'plan', speed:3, playing:false, rail:true,
+         tool:'none', layer:'all', mode:'plan', speed:3, playing:false, rail:true, recording:false,
          pours:null, membership:null, edits:null, types:null, foot:null },
 };
 
@@ -2457,6 +2458,9 @@ function sequencingView(){
       <button class="btn btn-ghost btn-sm" onclick="seqNewMap()"><span class="ms text-[16px]">add</span>New</button>
       <div class="ml-auto flex items-center gap-2 flex-wrap">
         <button class="btn btn-ghost btn-sm" onclick="seqSyncLinked()" title="Pull dates from the linked schedule tasks"><span class="ms text-[16px]">sync</span>Sync from schedule</button>
+        ${state.seq.recording
+          ? `<button class="btn btn-sm" style="background:#7f1d1d;color:#fff" disabled><span class="ms text-[16px]" style="animation:pulse 1s infinite">fiber_manual_record</span>Recording…</button>`
+          : `<button class="btn btn-ghost btn-sm" onclick="seqRecordVideo()" title="Play the sequence and download it as a video"><span class="ms text-[16px]">videocam</span>Record video</button>`}
         <button class="btn btn-ghost btn-sm" onclick="seqExportPdf()"><span class="ms text-[16px]">picture_as_pdf</span>Export</button>
         <button class="btn btn-ghost btn-sm" onclick="seqToggleRail()" title="Show/hide the side panel"><span class="ms text-[16px]">${state.seq.rail?'unfold_less':'unfold_more'}</span></button>
       </div>
@@ -2653,6 +2657,60 @@ function seqMount(){
   seqFeedMap();
   seqSyncLinked(true);
   seqPushToMap();
+}
+
+/* ---- video export: record the canvas while it plays, download a .webm ----
+   Entirely client-side (MediaRecorder + canvas.captureStream) — no server. The
+   engine burns an on-canvas date/progress badge (setSeqStamp) for the duration so
+   the video is self-contained; the HTML transport HUD isn't part of a canvas stream. */
+async function seqRecordVideo(){
+  const m=getSeqMap(); const d=seqDoc(); if(!m||!d) return;
+  const r=m.seqRange();
+  if(r.min==null) return toast('Add some dates to a phase before recording','warn');
+  const host=document.getElementById('seqMapHost'); const canvas=host && host.querySelector('canvas');
+  if(!canvas || !canvas.captureStream || typeof MediaRecorder==='undefined')
+    return toast('This browser can\'t record the canvas (try Chrome)','warn');
+  if(state.seq.recording) return;
+
+  state.seq.recording=true; render();
+  // land on Both so plan+actual both read in the film, and start from day one
+  const prevMode=state.seq.mode, prevLayer=state.seq.layer, prevSpeed=state.seq.speed;
+  m.seqPlay(false);
+  m.setSeqStamp(true, d.name);
+  m.setSeqLayer(state.seq.layer);
+  m.setSeqPlayhead(r.minIso);
+  const secs=Math.min(24, Math.max(12, (r.days||30)/8));   // ~12–24s film
+  m.setSeqSpeed((r.days||30)/secs);
+
+  let rec, chunks=[];
+  try{
+    const stream=canvas.captureStream(30);
+    const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9'
+               : MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm';
+    rec=new MediaRecorder(stream, { mimeType:mime, videoBitsPerSecond: 9_000_000 });
+    rec.ondataavailable=e=>{ if(e.data && e.data.size) chunks.push(e.data); };
+    const stopped=new Promise(res=>{ rec.onstop=res; });
+    rec.start(200);
+
+    await new Promise(res=>setTimeout(res, 700));           // brief hold on the opening frame
+    m.seqPlay(true);
+    await new Promise(res=>{ const t=setInterval(()=>{ if(!m.seqIsPlaying()){ clearInterval(t); res(); } }, 150); });
+    await new Promise(res=>setTimeout(res, 1400));           // hold the finished frame
+    rec.stop(); await stopped;
+
+    const blob=new Blob(chunks, { type:'video/webm' });
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=(d.name||'Sequence').replace(/[^\w]+/g,'_')+'_animation.webm';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 8000);
+    toast(`Video downloaded — ${(blob.size/1048576).toFixed(1)} MB (.webm)`,'ok');
+  }catch(e){ console.error('record', e); toast('Recording failed — '+(e&&e.message||e),'warn'); }
+  finally{
+    m.setSeqStamp(false);
+    m.setSeqMode(prevMode); m.setSeqLayer(prevLayer); m.setSeqSpeed(prevSpeed);
+    state.seq.recording=false; render();
+  }
 }
 
 /* ---- export: one page per layer, like the three-page template ---- */

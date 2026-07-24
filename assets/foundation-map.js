@@ -323,6 +323,7 @@ function createFoundationMap(opts){
   let _seqRev=0, _seqGeomCache=null, _seqPhaseCache=null, _seqSweepCache=null, _seqFootPhase=null;
   let _seqCb=null, _seqCbTimer=0, _seqZoneCb=null, _seqSelCb=null;
   let _seqPlaying=false, _seqRaf=0, _seqLastT=0, _seqSpeed=3;        // days per second
+  let _seqStamp=false, _seqStampTitle='';                            // on-canvas date/progress badge (for video export)
   let _seqSelId=null, _seqDraft=null, _seqDrag=null, _seqClick=false, _seqRouteCrew=null;
 
   const seqOn=()=>!!(_seq && _seq.phases && Object.keys(_seq.phases).length);
@@ -666,7 +667,32 @@ function createFoundationMap(opts){
       ctx.fillText(crewTag(c), sx, sy+0.5);
     });
     ctx.textAlign='left';
+    if(_seqStamp) drawSeqStamp();
   }
+  // Self-contained date + progress badge burned onto the canvas — so a captured
+  // video (canvas stream) carries the readout even though the HTML HUD does not.
+  const _SD_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function _seqStampDate(){ if(_seqDay==null) return '—'; const d=new Date(Math.round(_seqDay)*86400000);
+    return _SD_MON[d.getUTCMonth()]+' '+d.getUTCDate()+', '+d.getUTCFullYear(); }
+  function drawSeqStamp(){
+    if(!seqOn()) return;
+    let planned=0,total=0; footings.forEach(f=>{ if(f.del)return; total++; if(seqFootPlanned(f))planned++; });
+    const w=Math.min(340, cssW-32), h=66, x=18, y=cssH-18-h;
+    ctx.save();
+    ctx.fillStyle='rgba(6,8,14,0.84)'; rrect(ctx,x,y,w,h,11); ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1; ctx.stroke();
+    ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+    if(_seqStampTitle){ ctx.fillStyle='rgba(150,168,196,0.85)'; ctx.font='700 10px Inter, sans-serif';
+      ctx.fillText(String(_seqStampTitle).toUpperCase().slice(0,42), x+15, y+19); }
+    ctx.fillStyle='#eaf1fb'; ctx.font='800 22px "JetBrains Mono", monospace'; ctx.fillText(_seqStampDate(), x+15, y+43);
+    const bx=x+15, by=y+h-13, bw=w-30, frac=total?planned/total:0;
+    ctx.fillStyle='rgba(255,255,255,0.09)'; rrect(ctx,bx,by,bw,5,2.5); ctx.fill();
+    ctx.fillStyle='#38bdf8'; rrect(ctx,bx,by,Math.max(0,bw*frac),5,2.5); ctx.fill();
+    ctx.textAlign='right'; ctx.fillStyle='rgba(180,196,220,0.9)'; ctx.font='700 11px "JetBrains Mono", monospace';
+    ctx.fillText(planned+' / '+total+' footings', x+w-15, y+43);
+    ctx.textAlign='left'; ctx.restore();
+  }
+  function setSeqStamp(on, title){ _seqStamp=!!on; if(title!=null) _seqStampTitle=title; scheduleDraw(); }
   function crewTag(c){
     const n=String(c.name||'').replace(/[^A-Za-z0-9 #]/g,'').trim();
     const num=/#\s*(\d+)/.exec(n);
@@ -1825,7 +1851,7 @@ function createFoundationMap(opts){
     setSequence, getSequence, onSeqChange, onSeqZoneDrawn, onSeqSelect, onSeqTick,
     setSeqPlayhead, getSeqPlayhead, seqRange, setSeqLayer, setSeqMode,
     setSeqTool, setSeqRouteCrew, getSeqRouteCrew, finishSeqDraft, cancelSeqDraft, undoSeqDraftPoint,
-    seqPlay, seqIsPlaying(){ return _seqPlaying; }, setSeqSpeed,
+    seqPlay, seqIsPlaying(){ return _seqPlaying; }, setSeqSpeed, setSeqStamp,
     seqSelect, getSeqSelected, seqActs, seqGroups, getSeqStats,
     phaseFootings, hullFromSelection, pourHullNorm, listPours, planSize,
     hasSelection(){ return !!(selFootings && selFootings.size); },

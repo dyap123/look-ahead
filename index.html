@@ -14,9 +14,10 @@
 <!-- Firebase compat (defer: not render-blocking; boot() runs on DOMContentLoaded, after these execute) -->
 <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
-<!-- Shared foundation-plan engine (also used by cup-dashboard). Geo first, engine second. -->
-<script defer src="vendor/foundation-map/foundation_geo.js"></script>
-<script defer src="vendor/foundation-map/foundation-map.js"></script>
+<!-- Foundation-plan map engine (the Sequencing tab). Geo first (window.FOUNDATION_GEO), engine second (window.OYFoundationMap).
+     Bundled into SuperYap as a standalone feature; kept in sync with the same engine cup-dashboard uses. -->
+<script defer src="assets/foundation_geo.js"></script>
+<script defer src="assets/foundation-map.js"></script>
 <style>
   /* perf: never paint a blur (matches cup-dashboard CPU rule) */
   *{ backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }
@@ -2114,7 +2115,7 @@ function shellMsg(icon,title,sub){ return `<div class="max-w-[1500px] mx-auto px
 /* ============================================================ SEQUENCING
    The hand-drawn foundation sequencing map, made live: phase zones + five dated
    activities each + one arrow route per crew, played back over the real CUP
-   foundation plan. The map itself is the shared engine (vendor/foundation-map);
+   foundation plan. The map itself is the bundled engine (assets/foundation-map.js);
    everything here is the authoring UI, the transport, and the Firebase wiring.
 
    Storage lives at the ROOT path cup-foundation/sequenceMaps — NOT under this
@@ -2424,7 +2425,7 @@ function seqHudPaint(){
 
 /* ---- view ---- */
 function sequencingView(){
-  if(!window.OYFoundationMap) return shellMsg('route','Map engine not loaded','vendor/foundation-map/foundation-map.js did not load.');
+  if(!window.OYFoundationMap) return shellMsg('route','Map engine not loaded','assets/foundation-map.js did not load.');
   if(!state.online)          return shellMsg('route','Offline','Connect to load the foundation plan and sequence maps.');
   if(!state.seq.loaded)      return shellMsg('route','Loading sequencing…','Fetching phases, routes and the foundation plan.');
 

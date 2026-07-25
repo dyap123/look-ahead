@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Saira:wght@600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
 <!-- Material Symbols subset to only the icons this app uses (full font is ~300KB; this is a fraction). display=block avoids flashing the icon-name text while loading. -->
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=add,add_circle,add_link,architecture,arrow_back,arrow_downward,arrow_upward,article,bolt,calendar_month,calendar_view_month,calendar_view_week,campaign,category,check_circle,chevron_left,chevron_right,close,cloud_done,cloud_off,content_copy,create_new_folder,delete,description,download,download_done,edit,edit_note,elevator,event,expand_less,expand_more,fact_check,fiber_manual_record,fit_screen,folder_open,foundation,fullscreen,fullscreen_exit,grid_4x4,grid_view,groups,handyman,health_and_safety,help_center,highlight_alt,hourglass_top,how_to_reg,insights,inventory_2,ios_share,library_add,link,list,lock,lock_open,open_in_new,pan_tool,pause,payments,pending,picture_as_pdf,play_arrow,plumbing,polyline,push_pin,radio_button_unchecked,redo,remove,report,route,save,schedule,science,search,settings,skip_next,skip_previous,straighten,sync,table_view,task_alt,touch_app,tune,undo,unfold_less,unfold_more,upload_file,verified,videocam,view_list,warning,zoom_in,zoom_out&display=block" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=add,add_circle,add_link,architecture,arrow_back,arrow_downward,arrow_upward,article,bolt,calendar_add_on,calendar_month,calendar_view_month,calendar_view_week,campaign,category,check_circle,chevron_left,chevron_right,close,cloud_done,cloud_off,content_copy,create_new_folder,delete,description,download,download_done,edit,edit_note,elevator,event,expand_less,expand_more,fact_check,fiber_manual_record,fit_screen,folder_open,foundation,fullscreen,fullscreen_exit,grid_4x4,grid_view,groups,handyman,health_and_safety,help_center,highlight_alt,hourglass_top,how_to_reg,insights,inventory_2,ios_share,label,label_off,library_add,link,list,lock,lock_open,open_in_new,pan_tool,pause,payments,pending,picture_as_pdf,play_arrow,plumbing,polyline,push_pin,radio_button_unchecked,redo,remove,report,route,save,schedule,science,search,settings,skip_next,skip_previous,straighten,sync,table_view,task_alt,touch_app,tune,undo,unfold_less,unfold_more,upload_file,verified,videocam,view_list,warning,zoom_in,zoom_out&display=block" rel="stylesheet" />
 <link rel="stylesheet" href="assets/tw.css" />
 <!-- Firebase compat (defer: not render-blocking; boot() runs on DOMContentLoaded, after these execute) -->
 <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -195,7 +195,7 @@ const state = {
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
   infoflow: { ann:{}, docs:{}, facts:{}, config:{}, loaded:false, loading:false, subject:null, unlocked:(localStorage.getItem('la_if_unlocked')==='1') },
   seq: { maps:{}, mapId:null, loaded:false, loading:false, dragging:false, sel:null, routeCrew:null,
-         tool:'none', layer:'all', mode:'plan', speed:3, playing:false, rail:true, recording:false,
+         tool:'none', layer:'all', mode:'plan', speed:3, playing:false, rail:true, recording:false, labels:true,
          pours:null, membership:null, edits:null, types:null, foot:null },
 };
 
@@ -2217,6 +2217,50 @@ function seqSyncLinked(quiet){
   return n;
 }
 
+/* ---- Populate schedule: the reverse of Sync-from-schedule (visualization → schedule).
+   Builds a schedule where every dated phase activity becomes a task (section per area
+   letter), links each phase row back to its task, and makes it the active schedule — so
+   from then on editing dates on the Gantt round-trips back via "Sync from schedule". */
+const SEQ_ACT_NAME={acp:'ACPs',shoring:'Shoring',excavate:'Excavation',pour:'Pour',backfill:'Backfill'};
+function seqPopulateSchedule(){
+  const d=seqDoc(); if(!d) return;
+  const phases=seqPhaseList();
+  const dated=phases.filter(ph=>SEQ_ACT_ROWS.some(a=>ph.acts&&ph.acts[a.key]&&ph.acts[a.key].start));
+  if(!dated.length) return toast('No phase has dates yet — add some first','warn');
+  if(!confirm(`Create a new schedule from ${dated.length} phase(s)? Each dated activity becomes a task, linked back to the map.`)) return;
+
+  const hol=state.holidays;
+  let earliest=null;
+  phases.forEach(ph=>SEQ_ACT_ROWS.forEach(a=>{ const s=ph.acts&&ph.acts[a.key]&&ph.acts[a.key].start; if(s&&(!earliest||s<earliest)) earliest=s; }));
+  let start0=earliest||fmtYMD(new Date()); while(dow(start0)!==1) start0=addDays(start0,-1);   // Monday on/before the first date
+
+  const pid=uid('p_');
+  const proj={ id:pid, name:(d.name||'Sequence')+' — Schedule', subtitle:'From sequencing zones', startDate:start0, sections:{}, tasks:{} };
+  const secOf={}; let created=0;
+  phases.forEach(ph=>{
+    const letter = ph.label==='0' ? '0' : ph.label[0];
+    if(!secOf[letter]){ const sid=uid('s_'); proj.sections[sid]={ name:'Sequence '+letter, order:Object.keys(proj.sections).length }; secOf[letter]=sid; }
+    const sid=secOf[letter];
+    SEQ_ACT_ROWS.forEach(a=>{
+      const row=ph.acts&&ph.acts[a.key]; if(!row||!row.start) return;
+      const end=row.end||row.start;
+      const days=Math.max(1, workingDaysBetween(row.start, end<row.start?row.start:end, hol).length);
+      const tid=uid('t_');
+      proj.tasks[tid]={ sectionId:sid, order:Object.keys(proj.tasks).length,
+        name:`${ph.label} — ${SEQ_ACT_NAME[a.key]}`, companyId:companyList()[0]?.id||'webcor',
+        days, depMode:'manual', start:row.start, depId:null, lag:0, linkedPourId:null };
+      row.taskId=tid; created++;   // link the phase row back to this task (mutates the doc)
+    });
+  });
+
+  state.projects[pid]=proj; state.meta.activeProjectId=pid;
+  seqSave();                       // persist the new taskId links on the sequence doc
+  recomputeActive();
+  toast(`Built a ${created}-task schedule from the sequence and linked it back — open the Schedule tab`,'ok');
+  setNav('schedule');
+}
+function seqToggleLabels(){ state.seq.labels=!(state.seq.labels!==false); const m=getSeqMap(); if(m) m.setSeqLabels(state.seq.labels); render(); }
+
 /* ---- map lifecycle ---- */
 function seqNewMap(){
   const name=(prompt('Name this sequence map:','Foundation Sequencing')||'').trim(); if(!name) return;
@@ -2457,11 +2501,13 @@ function sequencingView(){
       <button class="icobtn" title="Delete map" onclick="seqDeleteMap()"><span class="ms text-[18px]">delete</span></button>
       <button class="btn btn-ghost btn-sm" onclick="seqNewMap()"><span class="ms text-[16px]">add</span>New</button>
       <div class="ml-auto flex items-center gap-2 flex-wrap">
+        <button class="btn btn-ghost btn-sm" onclick="seqPopulateSchedule()" title="Create schedule tasks from the phase dates and link them back (round-trips with Sync from schedule)"><span class="ms text-[16px]">calendar_add_on</span>Populate schedule</button>
         <button class="btn btn-ghost btn-sm" onclick="seqSyncLinked()" title="Pull dates from the linked schedule tasks"><span class="ms text-[16px]">sync</span>Sync from schedule</button>
         ${state.seq.recording
           ? `<button class="btn btn-sm" style="background:#7f1d1d;color:#fff" disabled><span class="ms text-[16px]" style="animation:pulse 1s infinite">fiber_manual_record</span>Recording…</button>`
           : `<button class="btn btn-ghost btn-sm" onclick="seqRecordVideo()" title="Play the sequence and download it as a video"><span class="ms text-[16px]">videocam</span>Record video</button>`}
         <button class="btn btn-ghost btn-sm" onclick="seqExportPdf()"><span class="ms text-[16px]">picture_as_pdf</span>Export</button>
+        <button class="btn btn-ghost btn-sm ${state.seq.labels===false?'':'text-sky-300'}" onclick="seqToggleLabels()" title="Show or hide the phase-letter labels on the map"><span class="ms text-[16px]">${state.seq.labels===false?'label_off':'label'}</span>Labels</button>
         <button class="btn btn-ghost btn-sm" onclick="seqToggleRail()" title="Show/hide the side panel"><span class="ms text-[16px]">${state.seq.rail?'unfold_less':'unfold_more'}</span></button>
       </div>
     </div>
@@ -2545,7 +2591,7 @@ function seqTransport(layers){
 function seqPhaseListPanel(phases){
   const rows=phases.map(ph=>{
     const on=state.seq.sel===ph.id;
-    const g=SEQ_GROUP_HEX[ph.group]||SEQ_GROUP_HEX.slate;
+    const g=ph.color||SEQ_GROUP_HEX[ph.group]||SEQ_GROUP_HEX.slate;
     const m=getSeqMap();
     const fl=m?m.phaseFootings(ph.id):{count:0,cy:0};
     const dates=SEQ_ACT_ROWS.filter(a=>ph.acts&&ph.acts[a.key]&&ph.acts[a.key].start).length;
@@ -2653,7 +2699,7 @@ function seqMount(){
   }
   m.relocate(host, { chrome:'minimal' });
   m.setSeqTool(state.seq.tool); m.setSeqRouteCrew(state.seq.routeCrew);
-  m.setSeqLayer(state.seq.layer); m.setSeqMode(state.seq.mode); m.seqSelect(state.seq.sel);
+  m.setSeqLayer(state.seq.layer); m.setSeqMode(state.seq.mode); m.seqSelect(state.seq.sel); m.setSeqLabels(state.seq.labels!==false);
   seqFeedMap();
   seqSyncLinked(true);
   seqPushToMap();

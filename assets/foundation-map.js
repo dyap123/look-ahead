@@ -324,6 +324,7 @@ function createFoundationMap(opts){
   let _seqCb=null, _seqCbTimer=0, _seqZoneCb=null, _seqSelCb=null;
   let _seqPlaying=false, _seqRaf=0, _seqLastT=0, _seqSpeed=3;        // days per second
   let _seqStamp=false, _seqStampTitle='';                            // on-canvas date/progress badge (for video export)
+  let _seqShowLabels=true;                                           // phase label circles on/off
   let _seqSelId=null, _seqDraft=null, _seqDrag=null, _seqClick=false, _seqRouteCrew=null;
 
   const seqOn=()=>!!(_seq && _seq.phases && Object.keys(_seq.phases).length);
@@ -436,7 +437,7 @@ function createFoundationMap(opts){
     return rank!=null && rank<=frac;
   }
   // Area color for a footing (its phase's group) — cached with the phase map.
-  function seqGroupColOfPhase(pid){ const ph=pid&&_seq.phases[pid]; return ph ? (SEQ_GROUPS[ph.group]||SEQ_GROUPS.slate) : null; }
+  function seqGroupColOfPhase(pid){ const ph=pid&&_seq.phases[pid]; return ph ? (ph.color||SEQ_GROUPS[ph.group]||SEQ_GROUPS.slate) : null; }
   function _seqFootGroupCol(f){ return seqGroupColOfPhase(seqFootPhaseMap()[f.no]); }
   // Calm, area-based footing paint. A zone visibly "fills in" with its OWN color as
   // it pours (matches the reference's color-coded areas); un-poured footings sit as a
@@ -491,9 +492,12 @@ function createFoundationMap(opts){
     return [ 2*u*(c[0]-a[0]) + 2*t*(b[0]-c[0]), 2*u*(c[1]-a[1]) + 2*t*(b[1]-c[1]) ]; }
 
   // ── hit-testing (authoring) ──
-  function seqHitVertex(wx,wy){ const tol=9/scale;
-    for(const ph of seqPhases()){ const g=seqGeom(ph);
-      for(let i=0;i<g.pts.length;i++){ if(Math.abs(g.pts[i][0]-wx)<tol && Math.abs(g.pts[i][1]-wy)<tol) return { id:ph.id, i }; } }
+  // Only the SELECTED phase's vertices are grabbable — otherwise, with 24 zones tiling
+  // the plan, a click anywhere lands on some zone's vertex and hijacks the draw/select.
+  function seqHitVertex(wx,wy){ const tol=8/scale;
+    const ph=_seqSelId?_seq.phases[_seqSelId]:null; if(!ph) return null;
+    const g=seqGeom(ph);
+    for(let i=0;i<g.pts.length;i++){ if(Math.abs(g.pts[i][0]-wx)<tol && Math.abs(g.pts[i][1]-wy)<tol) return { id:ph.id, i }; }
     return null; }
   function seqHitPin(wx,wy){ const tol=15/scale;
     for(const ph of seqPhases()){ const g=seqGeom(ph); if(Math.hypot(g.pin[0]-wx,g.pin[1]-wy)<tol) return ph.id; }
@@ -504,10 +508,7 @@ function createFoundationMap(opts){
 
   function seqOnDown(wx,wy){
     const t=st.seqTool;
-    if(t==='zone'){
-      if(!_seqDraft){ const v=seqHitVertex(wx,wy); if(v){ _seqDrag={ type:'vertex', id:v.id, i:v.i }; _moved=false; return true; } }
-      _seqClick=true; _moved=false; return true;                                  // vertex is appended on pointer-up
-    }
+    if(t==='zone'){ _seqClick=true; _moved=false; return true; }                    // pure add-vertex on pointer-up; editing is the Move tool
     if(t==='pin'){
       const pid=seqHitPin(wx,wy);
       if(pid){ _seqDrag={ type:'pin', id:pid }; seqSelect(pid); _moved=false; return true; }
@@ -565,7 +566,7 @@ function createFoundationMap(opts){
       const off = _seqLayer!=='all' && !actWin(ph,_seqLayer);      // not part of the layer being shown
       // STABLE area color (never the activity color) — the reference keeps each area one
       // hue. State reads through opacity + a soft glow only, so the map never goes mono-red.
-      const col = SEQ_GROUPS[ph.group] || SEQ_GROUPS.slate;
+      const col = ph.color || SEQ_GROUPS[ph.group] || SEQ_GROUPS.slate;
       const started = !!s2.top || !!s2.active;
       let a = s2.active ? 0.14+0.05*pulse : (s2.top ? 0.10 : 0.055);
       if(off) a*=0.3;
@@ -577,9 +578,9 @@ function createFoundationMap(opts){
       ctx.lineWidth=(isSel?2.6:1.1)/sc;
       ctx.strokeStyle=hex2rgba(isSel?'#52E6E0':col, off?0.14:(s2.active?0.7:(started?0.34:0.2)));
       ctx.stroke();
-      if(st.seqTool==='zone'||st.seqTool==='pin'){                  // vertex handles while authoring
-        const hs=4.5/sc; ctx.fillStyle='#06060e'; ctx.strokeStyle='#52E6E0'; ctx.lineWidth=1.5/sc;
-        g.pts.forEach(p=>{ ctx.beginPath(); ctx.rect(p[0]-hs,p[1]-hs,hs*2,hs*2); ctx.fill(); ctx.stroke(); });
+      if(st.seqTool==='pin' && isSel){              // draggable vertex handles — ONLY the selected zone, small
+        const hs=3/sc; ctx.fillStyle='#06060e'; ctx.strokeStyle='#52E6E0'; ctx.lineWidth=1.4/sc;
+        g.pts.forEach(p=>{ ctx.beginPath(); ctx.arc(p[0],p[1],hs,0,7); ctx.fill(); ctx.stroke(); });
       }
     });
     if(_seqDraft && _seqDraft.pts.length){
@@ -626,13 +627,13 @@ function createFoundationMap(opts){
   function drawSeqChrome(sc){
     if(!seqOn()) return;
     const pulse=0.5+0.5*Math.sin(performance.now()/300);
-    seqPhases().forEach(ph=>{
+    if(_seqShowLabels) seqPhases().forEach(ph=>{
       const g=seqGeom(ph); if(!g.pts.length) return;
       const sx=g.pin[0]*sc+tx, sy=g.pin[1]*sc+ty;
       if(sx<-90||sy<-40||sx>cssW+90||sy>cssH+40) return;
       const s2=phaseStateAt(ph,_seqDay);
       const off=_seqLayer!=='all' && !actWin(ph,_seqLayer);
-      const col=SEQ_GROUPS[ph.group]||SEQ_GROUPS.slate;   // stable area color for the ring — calm, distinct per area
+      const col=ph.color||SEQ_GROUPS[ph.group]||SEQ_GROUPS.slate;   // explicit per-phase color (letter hue + sub-phase shade), else group palette
       const begun = !!(s2.top || s2.active);
       const done = s2.top==='backfill' || (s2.top==='pour' && !s2.active);
       const sel = _seqSelId===ph.id;
@@ -717,6 +718,8 @@ function createFoundationMap(opts){
     ctx.textAlign='left'; ctx.restore();
   }
   function setSeqStamp(on, title){ _seqStamp=!!on; if(title!=null) _seqStampTitle=title; scheduleDraw(); }
+  function setSeqLabels(on){ _seqShowLabels=!!on; scheduleDraw(); }
+  function seqLabelsOn(){ return _seqShowLabels; }
   function crewTag(c){
     const n=String(c.name||'').replace(/[^A-Za-z0-9 #]/g,'').trim();
     const num=/#\s*(\d+)/.exec(n);
@@ -1877,7 +1880,7 @@ function createFoundationMap(opts){
     setSequence, getSequence, onSeqChange, onSeqZoneDrawn, onSeqSelect, onSeqTick,
     setSeqPlayhead, getSeqPlayhead, seqRange, setSeqLayer, setSeqMode,
     setSeqTool, setSeqRouteCrew, getSeqRouteCrew, finishSeqDraft, cancelSeqDraft, undoSeqDraftPoint,
-    seqPlay, seqIsPlaying(){ return _seqPlaying; }, setSeqSpeed, setSeqStamp,
+    seqPlay, seqIsPlaying(){ return _seqPlaying; }, setSeqSpeed, setSeqStamp, setSeqLabels, seqLabelsOn,
     seqSelect, getSeqSelected, seqActs, seqGroups, getSeqStats,
     phaseFootings, hullFromSelection, pourHullNorm, listPours, planSize,
     hasSelection(){ return !!(selFootings && selFootings.size); },

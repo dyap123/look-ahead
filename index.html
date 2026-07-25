@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Saira:wght@600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
 <!-- Material Symbols subset to only the icons this app uses (full font is ~300KB; this is a fraction). display=block avoids flashing the icon-name text while loading. -->
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=add,add_circle,add_link,architecture,arrow_back,arrow_downward,arrow_upward,article,bolt,calendar_add_on,calendar_month,calendar_view_month,calendar_view_week,campaign,category,check_circle,chevron_left,chevron_right,close,cloud_done,cloud_off,content_copy,create_new_folder,delete,description,download,download_done,edit,edit_note,elevator,event,expand_less,expand_more,fact_check,fiber_manual_record,fit_screen,folder_open,foundation,fullscreen,fullscreen_exit,grid_4x4,grid_view,groups,handyman,health_and_safety,help_center,highlight_alt,hourglass_top,how_to_reg,insights,inventory_2,ios_share,label,label_off,library_add,link,list,lock,lock_open,open_in_new,pan_tool,pause,payments,pending,picture_as_pdf,play_arrow,plumbing,polyline,push_pin,radio_button_unchecked,redo,remove,report,route,save,schedule,science,search,settings,skip_next,skip_previous,straighten,sync,table_view,task_alt,touch_app,tune,undo,unfold_less,unfold_more,upload_file,verified,videocam,view_list,warning,zoom_in,zoom_out&display=block" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=add,add_circle,add_link,architecture,arrow_back,arrow_downward,arrow_upward,article,bolt,calendar_add_on,calendar_month,calendar_view_month,calendar_view_week,campaign,category,check_circle,chevron_left,chevron_right,close,cloud_done,cloud_off,content_copy,create_new_folder,delete,description,download,download_done,edit,edit_note,elevator,event,expand_less,expand_more,fact_check,fiber_manual_record,fit_screen,folder_open,foundation,fullscreen,fullscreen_exit,grid_4x4,grid_view,groups,handyman,health_and_safety,help_center,highlight_alt,hourglass_top,how_to_reg,insights,inventory_2,ios_share,label,label_off,library_add,link,list,lock,lock_open,open_in_new,pan_tool,pause,payments,pending,picture_as_pdf,play_arrow,plumbing,polyline,push_pin,radio_button_unchecked,redo,remove,report,route,save,schedule,science,search,settings,skip_next,skip_previous,splitscreen,straighten,sync,table_view,task_alt,touch_app,tune,undo,unfold_less,unfold_more,upload_file,verified,videocam,view_list,warning,zoom_in,zoom_out&display=block" rel="stylesheet" />
 <link rel="stylesheet" href="assets/tw.css" />
 <!-- Firebase compat (defer: not render-blocking; boot() runs on DOMContentLoaded, after these execute) -->
 <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -199,7 +199,7 @@ const state = {
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
   infoflow: { ann:{}, docs:{}, facts:{}, config:{}, loaded:false, loading:false, subject:null, unlocked:(localStorage.getItem('la_if_unlocked')==='1') },
   seq: { maps:{}, mapId:null, loaded:false, loading:false, dragging:false, sel:null, routeCrew:null,
-         tool:'none', layer:'all', mode:'plan', speed:3, playing:false, rail:true, recording:false, labels:true, seqFilter:'ALL', railTab:'phases',
+         tool:'none', layer:'all', mode:'plan', speed:3, playing:false, rail:true, recording:false, labels:true, seqFilter:'ALL', railTab:'phases', split:false,
          pours:null, membership:null, edits:null, types:null, foot:null },
 };
 
@@ -1154,7 +1154,22 @@ function ensureChart(){ if(window.Chart) return Promise.resolve(); return loadSc
 function drawChart(id,cfg){ const cv=document.getElementById(id); if(!cv||!window.Chart) return; if(chartReg[id]) chartReg[id].destroy(); chartReg[id]=new window.Chart(cv.getContext('2d'),cfg); }
 function afterRender(){
   _gLeft=document.getElementById('ganttLeft'); _gRight=document.getElementById('ganttRight');   // refresh cached panes for hot handlers
-  if(state.nav==='sequencing'){ seqMount(); return; }
+  if(state.nav==='sequencing'){
+    seqMount();
+    if(state.seq.split && _gRight){                 // side-by-side: wire the Gantt + pull its dates onto the map
+      try{ if(state.gFit) fitGantt(); alignGanttRows(); filterGantt();
+        seqSyncLinked(true); seqPushToMap(); seqDrawGanttPlayhead();
+        // center the Gantt on the sequence playhead the first time split opens; else keep the user's scroll
+        if(!state.seq._splitCentered){
+          const th=_gRight&&getSeqMap() ? _gRight.querySelector(`th.day[data-d="${getSeqMap().getSeqPlayhead()}"]`) : null;
+          if(th && _gRight){ _gRight.scrollLeft=Math.max(0, th.offsetLeft - _gRight.clientWidth/2); }
+          state.seq._splitCentered=true;
+        } else if(_gRight){ _gRight.scrollLeft=gScroll.left||_gRight.scrollLeft; _gRight.scrollTop=gScroll.top||0; }
+        syncGanttScroll();
+      }catch(e){ console.warn('split wire', e); }
+    }
+    return;
+  }
   if(state.nav==='tools'){ if(state.tools.tab!=='list') ensureChart().then(drawToolsCharts); return; }
   if(state.nav!=='schedule') return;
   if(state.view==='build'){
@@ -2484,6 +2499,22 @@ function seqHudPaint(){
         <span class="text-white/40" style="font-size:11px">${esc(where)}</span></div>`;
     }).join('') || '<span class="text-white/30" style="font-size:11px">No crews on this layer</span>';
   }
+  if(state.seq.split) seqDrawGanttPlayhead();
+}
+/* Vertical playhead line on the split Gantt at the sequence's current date. */
+function seqDrawGanttPlayhead(){
+  if(!(state.nav==='sequencing' && state.seq.split)) return;
+  const gr=document.getElementById('ganttRight'); const m=getSeqMap(); if(!gr||!m) return;
+  const tbl=gr.querySelector('table'); if(!tbl) return;
+  let line=document.getElementById('seqGanttPlayhead');
+  const date=m.getSeqPlayhead();
+  const th=date ? gr.querySelector(`th.day[data-d="${date}"]`) : null;
+  if(!line){ line=document.createElement('div'); line.id='seqGanttPlayhead';
+    line.style.cssText='position:absolute;top:0;width:2px;background:#52E6E0;pointer-events:none;z-index:5;box-shadow:0 0 8px rgba(82,230,224,0.8)';
+    if(getComputedStyle(gr).position==='static') gr.style.position='relative';
+    gr.appendChild(line); }
+  if(th){ line.style.display='block'; line.style.left=(th.offsetLeft+th.offsetWidth/2)+'px'; line.style.height=tbl.offsetHeight+'px'; }
+  else line.style.display='none';
 }
 
 /* ---- view ---- */
@@ -2519,6 +2550,7 @@ function sequencingView(){
       <button class="icobtn" title="Delete map" onclick="seqDeleteMap()"><span class="ms text-[18px]">delete</span></button>
       <button class="btn btn-ghost btn-sm" onclick="seqNewMap()"><span class="ms text-[16px]">add</span>New</button>
       <div class="ml-auto flex items-center gap-2 flex-wrap">
+        <button class="btn btn-sm ${state.seq.split?'btn-green':'btn-ghost'}" onclick="seqToggleSplit()" title="Show the schedule Gantt side-by-side with the map"><span class="ms text-[16px]">splitscreen</span>Split</button>
         <button class="btn btn-ghost btn-sm" onclick="seqPopulateSchedule()" title="Create schedule tasks from the phase dates and link them back (round-trips with Sync from schedule)"><span class="ms text-[16px]">calendar_add_on</span>Populate schedule</button>
         <button class="btn btn-ghost btn-sm" onclick="seqSyncLinked()" title="Pull dates from the linked schedule tasks"><span class="ms text-[16px]">sync</span>Sync from schedule</button>
         ${state.seq.recording
@@ -2546,7 +2578,7 @@ function sequencingView(){
     </div>
 
     <div class="flex gap-3 items-start" style="flex-wrap:wrap">
-      ${state.seq.rail ? `<div class="card" style="width:360px;flex:none;max-width:100%;position:sticky;top:60px;max-height:calc(100vh - 90px);display:flex;flex-direction:column;padding:0;overflow:hidden">
+      ${(state.seq.rail && !state.seq.split) ? `<div class="card" style="width:360px;flex:none;max-width:100%;position:sticky;top:60px;max-height:calc(100vh - 90px);display:flex;flex-direction:column;padding:0;overflow:hidden">
         <div class="flex items-center gap-1 p-2" style="border-bottom:1px solid var(--outline-v)">
           <div class="seg flex-1" style="display:flex">
             <div class="tabbtn flex-1 text-center ${state.seq.railTab!=='crews'?'on':''}" style="padding:6px" onclick="seqRailTab('phases')">Phases <span class="text-white/40">${phases.length}</span></div>
@@ -2559,14 +2591,30 @@ function sequencingView(){
             : (selPh ? seqPhasePanel(selPh)+'<div style="height:8px"></div>' : '') + seqPhaseListPanel(phases)}
         </div>
       </div>` : ''}
-      <div id="seqStage" style="flex:1 1 620px;min-width:320px">
-        <div id="seqMapHost" class="card" style="height:min(72vh,760px);overflow:hidden;position:relative">
+      <div id="seqStage" style="flex:1 1 ${state.seq.split?'440px':'620px'};min-width:320px">
+        <div id="seqMapHost" class="card" style="height:min(${state.seq.split?'62vh':'72vh'},760px);overflow:hidden;position:relative">
           <button onclick="seqToggleFullscreen()" title="Full screen (Esc to exit)" class="icobtn" style="position:absolute;top:10px;right:10px;z-index:6;background:rgba(8,11,18,0.8);border:1px solid var(--outline-v);color:var(--on)"><span class="ms text-[18px]" id="seqFsIcon">fullscreen</span></button>
         </div>
         ${seqTransport(layers)}
       </div>
+      ${state.seq.split ? `<div style="flex:1 1 560px;min-width:360px">${seqSchedulePanel()}</div>` : ''}
     </div>
   </div>`;
+}
+/* Side-by-side schedule ↔ sequence. Shows the active schedule's Gantt next to the map;
+   the sequence playhead draws a live line on the Gantt, and edits on the Gantt flow back to
+   the map (afterRender re-syncs linked rows). Rail hides in split to make room. */
+function seqToggleSplit(){ state.seq.split=!state.seq.split; if(state.seq.split){ seqMap&&seqMap.seqPlay(false); state.seq.playing=false; state.seq._splitCentered=false; } render(); }
+function seqSchedulePanel(){
+  const p=activeProject();
+  const hasTasks=p && Object.keys(p.tasks||{}).length>0;
+  const projOpts=Object.entries(state.projects).map(([id,pr])=>`<option value="${id}" ${id===activeId()?'selected':''}>${esc(pr.name)}</option>`).join('');
+  const head=`<div class="flex items-center gap-2 mb-2 flex-wrap">
+      <span class="ms" style="color:var(--primary)">calendar_month</span><span class="display font-bold text-sm">Schedule</span>
+      <select class="fld ml-auto" title="Which schedule to show beside the map" onchange="state.meta.activeProjectId=this.value; recomputeActive(); render(); saveActive()">${projOpts||'<option>No schedules</option>'}</select>
+    </div>`;
+  if(!p || !hasTasks) return `${head}<div class="card p-6 text-center text-white/50 text-sm">This schedule has no tasks yet.<div class="mt-3"><button class="btn btn-green btn-sm" onclick="seqPopulateSchedule()"><span class="ms text-[16px]">calendar_add_on</span>Populate from this sequence</button></div></div>`;
+  return head+ganttPanel(p);
 }
 function seqRailTab(t){ state.seq.railTab=t; render(); }
 /* Full-screen the map + transport (native Fullscreen API on #seqStage) so the animation

@@ -1483,10 +1483,13 @@ function createFoundationMap(opts){
   }
   function renderChips(){
     if(!elChips||!pours) return;
-    const seqs=[...new Set(pours.map(p=>p.seq))].sort((a,b)=>parseFloat(a)-parseFloat(b));
-    const chip=(id,label,col,on)=>`<button data-filter="${id}" style="display:flex;align-items:center;gap:5px;border:1px solid ${on?(col||'rgba(82,230,224,0.5)'):'rgba(150,170,205,0.14)'};background:${on?hex2rgba(col||'#52E6E0',0.14):'rgba(0,0,0,0.25)'};color:${on?'#fff':'rgba(200,212,230,0.6)'};border-radius:8px;padding:4px 11px;font-size:11px;font-weight:700;cursor:pointer;font-family:Inter">${label}</button>`;
+    const withFtg=new Set((footings||[]).filter(f=>!f.del && f.pourId!=null).map(f=>f.seq).filter(s=>s!==''&&s!=null));
+    const seqs=[...withFtg]
+      .sort((a,b)=>{ const na=parseFloat(a),nb=parseFloat(b),an=!isNaN(na),bn=!isNaN(nb); return (an&&bn)?na-nb:(an?-1:(bn?1:String(a).localeCompare(String(b)))); });
+    const colOf=s=>{ const p=pours.find(p=>p.seq===s&&p.color); return (p&&p.color)||FND_SEQCOL[s]||'#94a3b8'; };
+    const chip=(id,label,col,on)=>`<button data-filter="${id}" style="display:flex;align-items:center;gap:5px;border:1px solid ${on?(col||'rgba(82,230,224,0.6)'):'rgba(150,170,205,0.14)'};background:${on?hex2rgba(col||'#52E6E0',0.2):'rgba(0,0,0,0.25)'};color:${on?'#fff':'rgba(200,212,230,0.6)'};border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:Inter"><span style="width:8px;height:8px;border-radius:2px;background:${col||'#52E6E0'};display:inline-block;flex:none"></span>${label}</button>`;
     let h=chip('ALL','All','#52E6E0',st.filter==='ALL');
-    seqs.forEach(s=>{ h+=chip(s,(s==='0.5'?'Seq 0.5':'Seq '+s),FND_SEQCOL[s],st.filter===s); });
+    seqs.forEach(s=>{ const num=/^[0-9.]/.test(String(s)); h+=chip(s,(num?'Seq '+s:s),colOf(s),st.filter===s); });
     elChips.innerHTML=h;
   }
   function renderSwatches(){ if(!swatchesEl) return;

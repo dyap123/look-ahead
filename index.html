@@ -175,6 +175,10 @@
   .modalwrap{ position:fixed; inset:0; background:rgba(0,0,0,.66); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px; }
   .toast{ position:fixed; bottom:18px; left:50%; transform:translateX(-50%); padding:10px 16px; border-radius:8px; font-weight:600; font-size:13px; z-index:80; box-shadow:0 10px 30px -10px #000; }
   @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.3} }
+  /* Full-screen sequence stage: map fills, transport pinned below */
+  #seqStage:fullscreen{ background:var(--bg); padding:10px; display:flex; flex-direction:column; gap:8px; }
+  #seqStage:fullscreen #seqMapHost{ height:auto !important; flex:1 1 auto; min-height:0; }
+  #seqStage:fullscreen .card{ margin:0; }
 </style>
 </head>
 <body>
@@ -195,7 +199,7 @@ const state = {
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
   infoflow: { ann:{}, docs:{}, facts:{}, config:{}, loaded:false, loading:false, subject:null, unlocked:(localStorage.getItem('la_if_unlocked')==='1') },
   seq: { maps:{}, mapId:null, loaded:false, loading:false, dragging:false, sel:null, routeCrew:null,
-         tool:'none', layer:'all', mode:'plan', speed:3, playing:false, rail:true, recording:false, labels:true, seqFilter:'ALL',
+         tool:'none', layer:'all', mode:'plan', speed:3, playing:false, rail:true, recording:false, labels:true, seqFilter:'ALL', railTab:'phases',
          pours:null, membership:null, edits:null, types:null, foot:null },
 };
 
@@ -2542,18 +2546,41 @@ function sequencingView(){
     </div>
 
     <div class="flex gap-3 items-start" style="flex-wrap:wrap">
-      ${state.seq.rail ? `<div style="width:310px;flex:none;max-width:100%">
-        ${seqPhasePanel(selPh)}
-        ${seqPhaseListPanel(phases)}
-        ${seqCrewPanel(crews, phases)}
+      ${state.seq.rail ? `<div class="card" style="width:360px;flex:none;max-width:100%;position:sticky;top:60px;max-height:calc(100vh - 90px);display:flex;flex-direction:column;padding:0;overflow:hidden">
+        <div class="flex items-center gap-1 p-2" style="border-bottom:1px solid var(--outline-v)">
+          <div class="seg flex-1" style="display:flex">
+            <div class="tabbtn flex-1 text-center ${state.seq.railTab!=='crews'?'on':''}" style="padding:6px" onclick="seqRailTab('phases')">Phases <span class="text-white/40">${phases.length}</span></div>
+            <div class="tabbtn flex-1 text-center ${state.seq.railTab==='crews'?'on':''}" style="padding:6px" onclick="seqRailTab('crews')">Crews <span class="text-white/40">${crews.length}</span></div>
+          </div>
+        </div>
+        <div style="overflow-y:auto;overflow-x:hidden;flex:1 1 auto;padding:8px">
+          ${state.seq.railTab==='crews'
+            ? seqCrewPanel(crews, phases)
+            : (selPh ? seqPhasePanel(selPh)+'<div style="height:8px"></div>' : '') + seqPhaseListPanel(phases)}
+        </div>
       </div>` : ''}
-      <div style="flex:1 1 620px;min-width:320px">
-        <div id="seqMapHost" class="card" style="height:min(72vh,760px);overflow:hidden;position:relative"></div>
+      <div id="seqStage" style="flex:1 1 620px;min-width:320px">
+        <div id="seqMapHost" class="card" style="height:min(72vh,760px);overflow:hidden;position:relative">
+          <button onclick="seqToggleFullscreen()" title="Full screen (Esc to exit)" class="icobtn" style="position:absolute;top:10px;right:10px;z-index:6;background:rgba(8,11,18,0.8);border:1px solid var(--outline-v);color:var(--on)"><span class="ms text-[18px]" id="seqFsIcon">fullscreen</span></button>
+        </div>
         ${seqTransport(layers)}
       </div>
     </div>
   </div>`;
 }
+function seqRailTab(t){ state.seq.railTab=t; render(); }
+/* Full-screen the map + transport (native Fullscreen API on #seqStage) so the animation
+   can play big. NEVER render() while fullscreen — that rebuilds #seqStage and drops out of
+   fullscreen; just patch the icon and let the engine's ResizeObserver refit the canvas. */
+function seqToggleFullscreen(){
+  const el=document.getElementById('seqStage'); if(!el) return;
+  if(document.fullscreenElement){ document.exitFullscreen&&document.exitFullscreen(); }
+  else if(el.requestFullscreen){ el.requestFullscreen().catch(()=>toast('Full screen not available','warn')); }
+}
+document.addEventListener('fullscreenchange', ()=>{
+  const ic=document.getElementById('seqFsIcon'); if(ic) ic.textContent=document.fullscreenElement?'fullscreen_exit':'fullscreen';
+  const m=seqMap; if(m){ setTimeout(()=>{ try{ m.resize&&m.resize(); m.kick&&m.kick(); }catch(e){} }, 60); }
+});
 
 function seqTransport(layers){
   const sp=state.seq.speed;

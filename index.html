@@ -195,7 +195,7 @@ const state = {
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
   infoflow: { ann:{}, docs:{}, facts:{}, config:{}, loaded:false, loading:false, subject:null, unlocked:(localStorage.getItem('la_if_unlocked')==='1') },
   seq: { maps:{}, mapId:null, loaded:false, loading:false, dragging:false, sel:null, routeCrew:null,
-         tool:'none', layer:'all', mode:'plan', speed:3, playing:false, rail:true, recording:false, labels:true,
+         tool:'none', layer:'all', mode:'plan', speed:3, playing:false, rail:true, recording:false, labels:true, seqFilter:'ALL',
          pours:null, membership:null, edits:null, types:null, foot:null },
 };
 
@@ -2417,6 +2417,20 @@ function seqScrub(v){
 function seqSetSpeed(v){ const m=getSeqMap(); if(!m) return; state.seq.speed=+v; m.setSeqSpeed(+v); render(); }
 function seqSetLayer(l){ const m=getSeqMap(); if(!m) return; state.seq.layer=l; m.setSeqLayer(l); render(); }
 function seqSetMode(md){ const m=getSeqMap(); if(!m) return; state.seq.mode=md; m.setSeqMode(md); render(); }
+/* Sequence isolation filter — click a letter to highlight that sequence's footings and fade the rest. */
+function seqSetSeqFilter(k){ const m=getSeqMap(); if(!m) return; state.seq.seqFilter=(state.seq.seqFilter===k?'ALL':k); m.setSeqFilter(state.seq.seqFilter); render(); }
+function seqFilterChips(){
+  const m=getSeqMap(); if(!m) return '';
+  const cur=state.seq.seqFilter||'ALL';
+  const letters=(m.seqLetters&&m.seqLetters())||[];
+  const chip=(k,label,col)=>{ const on=cur===k;
+    return `<button class="btn btn-sm" onclick="seqSetSeqFilter('${k}')" title="${k==='ALL'?'Show every sequence':'Highlight only sequence '+k}"
+      style="${on?`background:${col||'var(--primary)'};border-color:${col||'var(--primary)'};color:${col?textOn(col):'#fff'}`:'background:transparent;border:1px solid var(--outline-v);color:var(--on-var)'};padding:3px 9px;min-width:30px">${label}</button>`; };
+  return `<div class="flex items-center gap-1 flex-wrap">
+    ${chip('ALL','All','#52E6E0')}
+    ${letters.map(l=>chip(l.letter, l.letter==='0'?'0':l.letter, l.color)).join('')}
+  </div>`;
+}
 function seqToggleRail(){ state.seq.rail=!state.seq.rail; render(); }
 
 /* Feed the (date-resolved) document into the engine. The engine gets the REAL
@@ -2568,6 +2582,10 @@ function seqTransport(layers){
       </div>
       <div id="seqCrewNow" class="flex items-center gap-3 flex-wrap ml-auto"></div>
     </div>
+    <div class="flex items-center gap-2 flex-wrap mt-2.5">
+      <span class="lcaps" style="font-size:9.5px">Sequence</span>
+      ${seqFilterChips()}
+    </div>
     <div class="flex items-center gap-4 flex-wrap mt-2.5 pt-2.5" style="border-top:1px solid var(--outline-v)">
       <div style="flex:1 1 240px;min-width:200px">
         <div class="flex items-center justify-between" style="font-size:10.5px">
@@ -2699,7 +2717,7 @@ function seqMount(){
   }
   m.relocate(host, { chrome:'minimal' });
   m.setSeqTool(state.seq.tool); m.setSeqRouteCrew(state.seq.routeCrew);
-  m.setSeqLayer(state.seq.layer); m.setSeqMode(state.seq.mode); m.seqSelect(state.seq.sel); m.setSeqLabels(state.seq.labels!==false);
+  m.setSeqLayer(state.seq.layer); m.setSeqMode(state.seq.mode); m.seqSelect(state.seq.sel); m.setSeqLabels(state.seq.labels!==false); m.setSeqFilter(state.seq.seqFilter||'ALL');
   seqFeedMap();
   seqSyncLinked(true);
   seqPushToMap();

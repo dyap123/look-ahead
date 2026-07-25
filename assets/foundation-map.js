@@ -319,7 +319,7 @@ function createFoundationMap(opts){
   const SEQ_GROUPS = { blue:'#4A8EFF', green:'#41A447', amber:'#FFBF00', violet:'#8B5CF6', teal:'#2dd4bf', rose:'#f472b6', slate:'#94a3b8' };
   const SEQ_POURED='#34d399', SEQ_BEHIND='#fbbf24', SEQ_AHEAD='#38bdf8', SEQ_IDLE='#64748b';
 
-  let _seq=null, _seqDay=null, _seqLayer='all', _seqMode='plan';
+  let _seq=null, _seqDay=null, _seqLayer='all', _seqMode='plan', _seqFilter='ALL';   // _seqFilter: 'ALL' | letter | phaseId — isolate one sequence
   let _seqRev=0, _seqGeomCache=null, _seqPhaseCache=null, _seqSweepCache=null, _seqFootPhase=null;
   let _seqCb=null, _seqCbTimer=0, _seqZoneCb=null, _seqSelCb=null;
   let _seqPlaying=false, _seqRaf=0, _seqLastT=0, _seqSpeed=3;        // days per second
@@ -444,8 +444,10 @@ function createFoundationMap(opts){
   // faint tint so zones + arrows stay the primary read. Amber/blue survive only as a
   // thin ring in Both mode (behind / ahead of plan) instead of loud fills.
   function seqFootPaint(f, done){
-    if(!seqOn()||_seqDay==null) return null;
+    if(!seqOn()) return null;
     const g=_seqFootGroupCol(f) || SEQ_IDLE;
+    if(_seqFilter!=='ALL' && !seqFootMatchesFilter(f)) return { col:g, a:0.045 };   // isolated: footings outside the picked sequence fade back
+    if(_seqDay==null) return null;
     const plan=seqFootPlanned(f);
     if(_seqMode==='actual') return done ? { col:SEQ_POURED, a:0.9 } : { col:g, a:0.13 };
     if(_seqMode==='plan')   return plan ? { col:g, a:0.8 }          : { col:g, a:0.12 };
@@ -563,7 +565,7 @@ function createFoundationMap(opts){
       const g=seqGeom(ph); if(g.pts.length<3) return;
       if(g.bbox.x0>vx1||g.bbox.y0>vy1||g.bbox.x1<vx0||g.bbox.y1<vy0) return;
       const s2=phaseStateAt(ph,_seqDay);
-      const off = _seqLayer!=='all' && !actWin(ph,_seqLayer);      // not part of the layer being shown
+      const off = (_seqLayer!=='all' && !actWin(ph,_seqLayer)) || !seqPhaseMatchesFilter(ph);   // not in the shown layer, or filtered out by sequence
       // STABLE area color (never the activity color) — the reference keeps each area one
       // hue. State reads through opacity + a soft glow only, so the map never goes mono-red.
       const col = ph.color || SEQ_GROUPS[ph.group] || SEQ_GROUPS.slate;
@@ -632,7 +634,7 @@ function createFoundationMap(opts){
       const sx=g.pin[0]*sc+tx, sy=g.pin[1]*sc+ty;
       if(sx<-90||sy<-40||sx>cssW+90||sy>cssH+40) return;
       const s2=phaseStateAt(ph,_seqDay);
-      const off=_seqLayer!=='all' && !actWin(ph,_seqLayer);
+      const off=(_seqLayer!=='all' && !actWin(ph,_seqLayer)) || !seqPhaseMatchesFilter(ph);
       const col=ph.color||SEQ_GROUPS[ph.group]||SEQ_GROUPS.slate;   // explicit per-phase color (letter hue + sub-phase shade), else group palette
       const begun = !!(s2.top || s2.active);
       const done = s2.top==='backfill' || (s2.top==='pour' && !s2.active);
@@ -758,6 +760,13 @@ function createFoundationMap(opts){
   function getSeqPlayhead(){ return _seqDay==null?'':_sdIso(Math.round(_seqDay)); }
   function setSeqLayer(l){ _seqLayer=l||'all'; scheduleDraw(); }
   function setSeqMode(m){ _seqMode=(m==='actual'||m==='both')?m:'plan'; scheduleDraw(); }
+  // ── sequence isolation filter: 'ALL' | letter (A..I,0) | a specific phaseId ──
+  function seqLetterOf(lbl){ return lbl==='0' ? '0' : String(lbl||'').charAt(0); }
+  function setSeqFilter(k){ _seqFilter=k||'ALL'; scheduleDraw(); }
+  function getSeqFilter(){ return _seqFilter; }
+  function seqLetters(){ const seen=new Set(), out=[]; seqPhases().forEach(ph=>{ const L=seqLetterOf(ph.label); if(!seen.has(L)){ seen.add(L); out.push({ letter:L, color: ph.color || SEQ_GROUPS[ph.group] || SEQ_GROUPS.slate }); } }); return out; }
+  function seqPhaseMatchesFilter(ph){ if(_seqFilter==='ALL'||!ph) return true; if(_seqFilter===ph.id) return true; return _seqFilter===seqLetterOf(ph.label); }
+  function seqFootMatchesFilter(f){ if(_seqFilter==='ALL') return true; const pid=seqFootPhaseMap()[f.no]; if(!pid) return false; return seqPhaseMatchesFilter(_seq.phases[pid]); }
   function setSeqTool(t){ st.seqTool=t||'none'; if(t!=='zone') _seqDraft=null;
     if(canvas) canvas.style.cursor=(t==='zone'||t==='route')?'crosshair':(t==='pin'?'move':'default');
     scheduleDraw(); }
@@ -1879,6 +1888,7 @@ function createFoundationMap(opts){
     // ── sequence layer ──
     setSequence, getSequence, onSeqChange, onSeqZoneDrawn, onSeqSelect, onSeqTick,
     setSeqPlayhead, getSeqPlayhead, seqRange, setSeqLayer, setSeqMode,
+    setSeqFilter, getSeqFilter, seqLetters,
     setSeqTool, setSeqRouteCrew, getSeqRouteCrew, finishSeqDraft, cancelSeqDraft, undoSeqDraftPoint,
     seqPlay, seqIsPlaying(){ return _seqPlaying; }, setSeqSpeed, setSeqStamp, setSeqLabels, seqLabelsOn,
     seqSelect, getSeqSelected, seqActs, seqGroups, getSeqStats,

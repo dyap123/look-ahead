@@ -435,17 +435,24 @@ function createFoundationMap(opts){
     const rank=phaseSweep(pid)[f.no];
     return rank!=null && rank<=frac;
   }
-  // Plan vs actual, resolved to one paint. Amber = should be poured and isn't;
-  // blue = poured ahead of plan; green = on plan.
+  // Area color for a footing (its phase's group) — cached with the phase map.
+  function seqGroupColOfPhase(pid){ const ph=pid&&_seq.phases[pid]; return ph ? (SEQ_GROUPS[ph.group]||SEQ_GROUPS.slate) : null; }
+  function _seqFootGroupCol(f){ return seqGroupColOfPhase(seqFootPhaseMap()[f.no]); }
+  // Calm, area-based footing paint. A zone visibly "fills in" with its OWN color as
+  // it pours (matches the reference's color-coded areas); un-poured footings sit as a
+  // faint tint so zones + arrows stay the primary read. Amber/blue survive only as a
+  // thin ring in Both mode (behind / ahead of plan) instead of loud fills.
   function seqFootPaint(f, done){
     if(!seqOn()||_seqDay==null) return null;
-    if(_seqMode==='actual') return done ? { col:SEQ_POURED, a:0.92 } : { col:SEQ_IDLE, a:0.26 };
+    const g=_seqFootGroupCol(f) || SEQ_IDLE;
     const plan=seqFootPlanned(f);
-    if(_seqMode==='plan') return plan ? { col:SEQ_POURED, a:0.92 } : { col:SEQ_IDLE, a:0.26 };
-    if(plan && done)  return { col:SEQ_POURED, a:0.92 };
-    if(plan && !done) return { col:SEQ_BEHIND, a:0.85, ring:'#f59e0b' };
-    if(!plan && done) return { col:SEQ_AHEAD,  a:0.85, ring:'#0ea5e9' };
-    return { col:SEQ_IDLE, a:0.26 };
+    if(_seqMode==='actual') return done ? { col:SEQ_POURED, a:0.9 } : { col:g, a:0.13 };
+    if(_seqMode==='plan')   return plan ? { col:g, a:0.8 }          : { col:g, a:0.12 };
+    // both
+    if(plan && done)  return { col:SEQ_POURED, a:0.9 };
+    if(plan && !done) return { col:g, a:0.62, ring:'#f59e0b', ringA:0.5 };
+    if(!plan && done) return { col:SEQ_POURED, a:0.82, ring:'#38bdf8', ringA:0.5 };
+    return { col:g, a:0.12 };
   }
 
   // ── crew position along its route ──
@@ -556,19 +563,20 @@ function createFoundationMap(opts){
       if(g.bbox.x0>vx1||g.bbox.y0>vy1||g.bbox.x1<vx0||g.bbox.y1<vy0) return;
       const s2=phaseStateAt(ph,_seqDay);
       const off = _seqLayer!=='all' && !actWin(ph,_seqLayer);      // not part of the layer being shown
-      const grp = SEQ_GROUPS[ph.group] || SEQ_GROUPS.slate;
-      let col=grp, a=0.05;
-      if(s2.active){ col=SEQ_ACT_BY[s2.active.key].color; a=0.17+0.09*pulse; }
-      else if(s2.top==='backfill'){ col=grp; a=0.07; }
-      else if(s2.top){ col=SEQ_ACT_BY[s2.top].color; a=0.12; }
-      if(off){ a*=0.25; }
+      // STABLE area color (never the activity color) — the reference keeps each area one
+      // hue. State reads through opacity + a soft glow only, so the map never goes mono-red.
+      const col = SEQ_GROUPS[ph.group] || SEQ_GROUPS.slate;
+      const started = !!s2.top || !!s2.active;
+      let a = s2.active ? 0.14+0.05*pulse : (s2.top ? 0.10 : 0.055);
+      if(off) a*=0.3;
       ctx.beginPath(); g.pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.closePath();
+      if(s2.active){ ctx.save(); ctx.shadowColor=hex2rgba(col,0.5); ctx.shadowBlur=18; }   // gentle glow on the zone in progress
       ctx.fillStyle=hex2rgba(col,a); ctx.fill();
+      if(s2.active) ctx.restore();
       const isSel=_seqSelId===ph.id;
-      ctx.lineWidth=(isSel?2.8:1.4)/sc;
-      ctx.strokeStyle=hex2rgba(isSel?'#52E6E0':col, off?0.2:(s2.active?0.95:(s2.top?0.6:0.4)));
-      if(!s2.top && !s2.active) ctx.setLineDash([7/sc,5/sc]);
-      ctx.stroke(); ctx.setLineDash([]);
+      ctx.lineWidth=(isSel?2.6:1.1)/sc;
+      ctx.strokeStyle=hex2rgba(isSel?'#52E6E0':col, off?0.14:(s2.active?0.7:(started?0.34:0.2)));
+      ctx.stroke();
       if(st.seqTool==='zone'||st.seqTool==='pin'){                  // vertex handles while authoring
         const hs=4.5/sc; ctx.fillStyle='#06060e'; ctx.strokeStyle='#52E6E0'; ctx.lineWidth=1.5/sc;
         g.pts.forEach(p=>{ ctx.beginPath(); ctx.rect(p[0]-hs,p[1]-hs,hs*2,hs*2); ctx.fill(); ctx.stroke(); });
@@ -597,16 +605,16 @@ function createFoundationMap(opts){
         const cur = at && at.mode==='travel' && at.leg===g.i;
         const past = _seqDay!=null && g.t1!=null && _seqDay>=g.t1;
         ctx.lineCap='round'; ctx.lineJoin='round';
-        ctx.strokeStyle=hex2rgba(col, cur?1:(past?0.38:0.16));
-        ctx.lineWidth=(cur?3.4:2.1)/sc;
-        if(!past && !cur){ ctx.setLineDash([9/sc,7/sc]); }
-        else if(cur){ ctx.setLineDash([12/sc,8/sc]); ctx.lineDashOffset=-(now/26)/sc; }   // marching ants toward the target
+        if(cur){ ctx.save(); ctx.shadowColor=hex2rgba(col,0.6); ctx.shadowBlur=10; }
+        ctx.strokeStyle=hex2rgba(col, cur?1:(past?0.5:0.14));   // solid throughout — no dashed spaghetti; future legs whisper
+        ctx.lineWidth=(cur?3.2:(past?2.0:1.4))/sc;
+        if(cur){ ctx.setLineDash([13/sc,8/sc]); ctx.lineDashOffset=-(now/24)/sc; }   // marching ants on the active leg only
         ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.quadraticCurveTo(k[0],k[1],b[0],b[1]); ctx.stroke();
-        ctx.setLineDash([]); ctx.lineDashOffset=0;
+        ctx.setLineDash([]); ctx.lineDashOffset=0; if(cur) ctx.restore();
         // arrowhead, oriented along the curve's tangent at the target
         const tg=qTangent(a,k,b,0.97), L=Math.hypot(tg[0],tg[1])||1, ux=tg[0]/L, uy=tg[1]/L;
         const tip=qPoint(a,k,b,0.985), hl=(cur?15:11)/sc, hw=(cur?7:5.5)/sc;
-        ctx.fillStyle=hex2rgba(col, cur?1:(past?0.45:0.2));
+        ctx.fillStyle=hex2rgba(col, cur?1:(past?0.55:0.16));
         ctx.beginPath(); ctx.moveTo(tip[0],tip[1]);
         ctx.lineTo(tip[0]-ux*hl-uy*hw, tip[1]-uy*hl+ux*hw);
         ctx.lineTo(tip[0]-ux*hl+uy*hw, tip[1]-uy*hl-ux*hw);
@@ -624,17 +632,20 @@ function createFoundationMap(opts){
       if(sx<-90||sy<-40||sx>cssW+90||sy>cssH+40) return;
       const s2=phaseStateAt(ph,_seqDay);
       const off=_seqLayer!=='all' && !actWin(ph,_seqLayer);
-      const grp=SEQ_GROUPS[ph.group]||SEQ_GROUPS.slate;
-      const col = s2.active ? SEQ_ACT_BY[s2.active.key].color : (s2.top ? SEQ_ACT_BY[s2.top].color : grp);
+      const col=SEQ_GROUPS[ph.group]||SEQ_GROUPS.slate;   // stable area color for the ring — calm, distinct per area
+      const begun = !!(s2.top || s2.active);
+      const done = s2.top==='backfill' || (s2.top==='pour' && !s2.active);
       const sel = _seqSelId===ph.id;
       const label=String(ph.label||'?');
       ctx.font='800 12px Inter, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      const r=Math.max(13, ctx.measureText(label).width/2+9);
-      ctx.globalAlpha=off?0.35:1;
-      if(s2.active){ ctx.fillStyle=hex2rgba(col,0.20+0.18*pulse); ctx.beginPath(); ctx.arc(sx,sy,r+5+3*pulse,0,7); ctx.fill(); }
-      ctx.fillStyle='rgba(8,11,18,0.92)'; ctx.beginPath(); ctx.arc(sx,sy,r,0,7); ctx.fill();
-      ctx.strokeStyle=sel?'#52E6E0':col; ctx.lineWidth=sel?2.6:1.8; ctx.stroke();
-      ctx.fillStyle=sel?'#52E6E0':'#e8eefb'; ctx.fillText(label,sx,sy+0.5);
+      const r=Math.max(12, ctx.measureText(label).width/2+8);
+      ctx.globalAlpha=off?0.3:1;
+      if(s2.active){ ctx.fillStyle=hex2rgba(col,0.18+0.16*pulse); ctx.beginPath(); ctx.arc(sx,sy,r+5+3*pulse,0,7); ctx.fill(); }
+      // filled disc in the area color once the phase has started; hollow dark disc before it
+      ctx.fillStyle = begun ? hex2rgba(col, done?0.9:0.82) : 'rgba(10,14,20,0.92)';
+      ctx.beginPath(); ctx.arc(sx,sy,r,0,7); ctx.fill();
+      ctx.strokeStyle=sel?'#52E6E0':hex2rgba(col, begun?1:0.85); ctx.lineWidth=sel?2.6:1.6; ctx.stroke();
+      ctx.fillStyle= begun ? '#0b0f16' : (sel?'#9ff2ee':'#e8eefb'); ctx.fillText(label,sx,sy+0.5);
       if(sel || st.seqTool==='pin'){                                   // counts on the selected phase only — keeps it clean
         const fl=phaseFootings(ph.id);
         const sub=fl.count+' ftg · '+fmt(fl.cy)+' CY';
@@ -646,23 +657,36 @@ function createFoundationMap(opts){
       }
       ctx.globalAlpha=1;
     });
+    // Only ACTIVE crews get a token — a crew that has finished (or hasn't started)
+    // parks on a circle and reads as static clutter, making it look like just one crew
+    // moves. Showing only work/travel means every token on screen is a live crew, so
+    // whenever crews overlap in time you genuinely see several moving at once.
     seqCrews().forEach(c=>{
       if(_seqLayer!=='all' && c.activity!==_seqLayer) return;
       const at=crewAt(c,_seqDay); if(!at) return;
+      if(at.mode!=='work' && at.mode!=='travel') return;
+      const col=c.color||'#94a3b8';
       let w;
       if(at.mode==='travel'){ const A=_seq.phases[at.from], B=_seq.phases[at.to]; if(!A||!B) return;
         const a=seqGeom(A).pin, b=seqGeom(B).pin, k=legCtrl(a,b,at.leg);
         const e=at.p<0.5 ? 2*at.p*at.p : 1-Math.pow(-2*at.p+2,2)/2;                       // easeInOutQuad
         w=qPoint(a,k,b,e);
+        // motion trail: a short fading tail behind the token so movement is unmistakable
+        const seg=12; ctx.lineCap='round';
+        for(let s3=0;s3<seg;s3++){ const t0=Math.max(0,e-0.10*(1-s3/seg)), t1=Math.max(0,e-0.10*(1-(s3+1)/seg));
+          const p0=qPoint(a,k,b,t0), p1=qPoint(a,k,b,t1);
+          ctx.strokeStyle=hex2rgba(col, 0.05+0.30*(s3/seg)); ctx.lineWidth=(2+4*(s3/seg));
+          ctx.beginPath(); ctx.moveTo(p0[0]*sc+tx,p0[1]*sc+ty); ctx.lineTo(p1[0]*sc+tx,p1[1]*sc+ty); ctx.stroke(); }
       } else { const P=_seq.phases[at.phase]; if(!P) return; w=seqGeom(P).pin; }
       const sx=w[0]*sc+tx, sy=w[1]*sc+ty;
       if(sx<-40||sy<-40||sx>cssW+40||sy>cssH+40) return;
-      const col=c.color||'#94a3b8';
       const working=at.mode==='work';
-      const rr=11 + (working?2.5*pulse:0);
-      ctx.fillStyle=hex2rgba(col,0.22+(working?0.2*pulse:0)); ctx.beginPath(); ctx.arc(sx,sy,rr+7,0,7); ctx.fill();
-      ctx.fillStyle=hex2rgba(col,0.96); ctx.beginPath(); ctx.arc(sx,sy,rr,0,7); ctx.fill();
-      ctx.strokeStyle='rgba(8,11,18,0.85)'; ctx.lineWidth=2; ctx.stroke();
+      const rr=12 + (working?2.5*pulse:1.5);
+      ctx.save(); ctx.shadowColor=hex2rgba(col,0.75); ctx.shadowBlur=working?10+6*pulse:14;
+      ctx.fillStyle=hex2rgba(col,0.24+(working?0.2*pulse:0.06)); ctx.beginPath(); ctx.arc(sx,sy,rr+8,0,7); ctx.fill();
+      ctx.shadowBlur=working?6:9;
+      ctx.fillStyle=hex2rgba(col,0.98); ctx.beginPath(); ctx.arc(sx,sy,rr,0,7); ctx.fill(); ctx.restore();
+      ctx.strokeStyle='rgba(8,11,18,0.9)'; ctx.lineWidth=2; ctx.stroke();
       ctx.fillStyle='#08090f'; ctx.font='800 11px Inter, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillText(crewTag(c), sx, sy+0.5);
     });
@@ -989,7 +1013,7 @@ function createFoundationMap(opts){
     if(underlay) ctx.drawImage(underlay,0,0,planW,planH);
     const vx0=-tx/sc, vy0=-ty/sc, vx1=vx0+cssW/sc, vy1=vy0+cssH/sc;
     if(gridCols){
-      ctx.lineWidth=1/sc; ctx.strokeStyle='rgba(154,176,214,0.26)'; ctx.setLineDash([6/sc,5/sc]);
+      ctx.lineWidth=1/sc; ctx.strokeStyle=seqOn()?'rgba(154,176,214,0.10)':'rgba(154,176,214,0.26)'; ctx.setLineDash([6/sc,5/sc]);   // quieter grid when the sequence overlay is on
       gridCols.forEach(c=>{ if(c.x<vx0-4||c.x>vx1+4)return; ctx.beginPath(); ctx.moveTo(c.x,vy0); ctx.lineTo(c.x,vy1); ctx.stroke(); });
       gridRows.forEach(c=>{ if(c.y<vy0-4||c.y>vy1+4)return; ctx.beginPath(); ctx.moveTo(vx0,c.y); ctx.lineTo(vx1,c.y); ctx.stroke(); });
       ctx.setLineDash([]);
@@ -1014,7 +1038,8 @@ function createFoundationMap(opts){
       const bw=Math.max(5,f.w*0.78);
       ctx.globalAlpha=a*ia; ctx.fillStyle=hex2rgba(col,sq?sq.a:(done?0.92:0.5));
       if(b.horizontal) ctx.fillRect(minx,f.cy-bw/2,maxx-minx,bw); else ctx.fillRect(f.cx-bw/2,miny,bw,maxy-miny);
-      ctx.globalAlpha=(dim?0.18:0.85)*ia; ctx.lineWidth=((sq&&sq.ring)?1.8:(isSel?1.3:0.7))/sc; ctx.strokeStyle=(sq&&sq.ring)?sq.ring:(done?'#10b981':col);
+      ctx.globalAlpha=(dim?0.18:(sq?1:0.85))*ia; ctx.lineWidth=((sq&&sq.ring)?1.6:(isSel?1.3:0.7))/sc;
+      ctx.strokeStyle=(sq&&sq.ring)?hex2rgba(sq.ring,sq.ringA||0.5):(sq?hex2rgba(col,sq.a<0.3?0.16:0.5):(done?'#10b981':col));
       if(b.horizontal) ctx.strokeRect(minx,f.cy-bw/2,maxx-minx,bw); else ctx.strokeRect(f.cx-bw/2,miny,bw,maxy-miny);
       if(selFootings.has(f.no)){ ctx.globalAlpha=1; ctx.lineWidth=2.4/sc; ctx.strokeStyle='#52E6E0';
         if(b.horizontal) ctx.strokeRect(minx-2/sc,f.cy-bw/2-2/sc,maxx-minx+4/sc,bw+4/sc); else ctx.strokeRect(f.cx-bw/2-2/sc,miny-2/sc,bw+4/sc,maxy-miny+4/sc); }
@@ -1029,7 +1054,8 @@ function createFoundationMap(opts){
       const isSelPour=p&&p.id===sel; let a=footAlpha; if(isSelPour)a=Math.max(a,0.97); if(done)a=Math.max(a,0.95); if(dim)a*=0.12;
       if(sq) a=sq.a;
       ctx.globalAlpha=a*ia; ctx.fillStyle=hex2rgba(col,sq?sq.a:(done?0.92:0.62)); ctx.fillRect(x,y,gw,gh);
-      ctx.globalAlpha=(dim?0.18:1)*ia; ctx.lineWidth=((sq&&sq.ring)?1.9:(isSelPour?1.6:0.9))/sc; ctx.strokeStyle=(sq&&sq.ring)?sq.ring:(done?'#10b981':col); ctx.strokeRect(x,y,gw,gh);
+      ctx.globalAlpha=(dim?0.18:1)*ia; ctx.lineWidth=((sq&&sq.ring)?1.7:(isSelPour?1.6:0.9))/sc;
+      ctx.strokeStyle=(sq&&sq.ring)?hex2rgba(sq.ring,sq.ringA||0.5):(sq?hex2rgba(col,sq.a<0.3?0.16:0.55):(done?'#10b981':col)); ctx.strokeRect(x,y,gw,gh);
       if(selFootings.has(f.no)){ ctx.globalAlpha=1; ctx.lineWidth=2.4/sc; ctx.strokeStyle='#52E6E0'; ctx.strokeRect(f.cx-f.w/2-2/sc,f.cy-f.h/2-2/sc,f.w+4/sc,f.h+4/sc); }
     });
     ctx.globalAlpha=1;

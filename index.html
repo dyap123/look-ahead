@@ -190,7 +190,7 @@
 /* ============================================================ STATE */
 const NS = 'look-ahead-schedule';
 const state = {
-  nav: 'schedule',
+  nav: 'sequencing',
   companies: {}, holidays: {}, templates: {}, meta: {}, projects: {}, pours: {},
   resolved: {}, online: false, collapsed: {}, lastTask: null,
   view: 'build', laWeeks: 3, laOffset: 0, gz: 1, gFilter: 'all', gColor: 'company', gFull: false, gFit: false, showTimeline: true, gPan: false, gSearch: '', laSearch: '', crewHide: {}, dirty: false, pending: 0,
@@ -529,7 +529,7 @@ function setNav(id){
   state.nav=id; render();
   if(id==='attendance') ensureAttendance(); if(id==='tools') ensureTools(); if(id==='infoflow') ensureInfoflow(); if(id==='sequencing') ensureSequencing();
 }
-function goHome(){ state.nav='schedule'; state.view='build'; render(); window.scrollTo(0,0); }
+function goHome(){ state.nav='sequencing'; render(); ensureSequencing(); window.scrollTo(0,0); }
 function header(){
   const p=activeProject();
   const projOpts=Object.entries(state.projects).map(([id,pr])=>`<option value="${id}" ${id===activeId()?'selected':''}>${esc(pr.name)}</option>`).join('');
@@ -542,8 +542,8 @@ function header(){
         <span class="lcaps text-white/30 hidden md:block" style="font-size:8.5px;line-height:1.15;letter-spacing:.18em">Superintendent<br>Suite</span>
       </div>
       <div class="seg ml-1 flex-wrap">
-        ${nav('schedule','Schedule','calendar_month')}
         ${nav('sequencing','Sequencing','route')}
+        ${nav('schedule','Schedule','calendar_month')}
         ${nav('infoflow','Info Flow','campaign')}
         ${nav('attendance','Attendance','how_to_reg')}
         ${nav('tools','Tools','handyman')}
@@ -2889,7 +2889,10 @@ async function seqExportPdf(){
 /* ============================================================ BOOT */
 function boot(){
   loadLocal(); ensureActive(); recomputeActive(); renderNow();
-  if(initFirebase()){ state.online=true; attachListeners(); seedIfNeeded().catch(e=>console.warn(e)); }
+  if(initFirebase()){ state.online=true; attachListeners(); seedIfNeeded().catch(e=>console.warn(e));
+    if(state.nav==='sequencing') ensureSequencing();          // default landing tab — load its data on boot
+    else if(state.nav==='tools') ensureTools(); else if(state.nav==='attendance') ensureAttendance(); else if(state.nav==='infoflow') ensureInfoflow();
+  }
   else { state.online=false; }
   renderNow();
   document.addEventListener('keydown', e=>{

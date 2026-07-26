@@ -56,6 +56,52 @@ function fndTypeCol(t){ t=String(t).toUpperCase(); if(t.indexOf('MPC')===0)retur
 // layer: it drives every footing's size + takeoff unless a per-footing or saved type override exists.
 const FOOTING_TYPE_LIBRARY = {'F6':{wFt:6,lFt:6,thk:24}, 'F6A':{wFt:9,lFt:6,thk:36}, 'F7':{wFt:7,lFt:7,thk:27}, 'F7A':{wFt:7,lFt:4.5,thk:54}, 'F8':{wFt:8,lFt:8,thk:30}, 'F8A':{wFt:8,lFt:8,thk:36}, 'F9':{wFt:9,lFt:9,thk:36}, 'F10':{wFt:10,lFt:10,thk:39}, 'F10A':{wFt:15,lFt:10,thk:51}, 'F11':{wFt:11,lFt:11,thk:42}, 'F12':{wFt:12,lFt:12,thk:45}, 'F12B':{wFt:12,lFt:12,thk:54}, 'F12C':{wFt:29.33,lFt:12,thk:54}, 'F14':{wFt:14,lFt:14,thk:54}, 'WF1':{wFt:2,thk:12}, 'GB1':{wFt:2,thk:24}, 'GB2':{wFt:3.5,thk:36}, 'GB3':{wFt:3,thk:36}, 'GB4':{wFt:3,lFt:1,thk:96}, 'GB5':{wFt:3,thk:36}, 'GB6':{wFt:3.5,thk:72}, 'GB7':{wFt:3.5,thk:66}, 'GB8':{wFt:3.5,thk:60}, 'GB9':{wFt:3.5,thk:45}, 'GB10':{wFt:3.5,thk:69}, 'PC1A':{wFt:3.5,lFt:3.5,thk:42}, 'PC1B':{wFt:3.5,lFt:3.5,thk:42}, 'PC1C':{wFt:3.5,lFt:3.5,thk:42}, 'PC1D':{wFt:3.5,lFt:3.5,thk:42}, 'PC2A':{wFt:3.5,lFt:9.5,thk:60}, 'PC2B':{wFt:3.5,lFt:9.5,thk:60}, 'PC2C':{wFt:3.5,lFt:9.5,thk:60}, 'PC2D':{wFt:3.5,lFt:9.5,thk:60}, 'PC2E':{wFt:3.5,lFt:9.5,thk:60}, 'PC2F':{wFt:3.5,lFt:9.5,thk:60}, 'PC2G':{wFt:3.5,lFt:9.5,thk:90}, 'PC2H':{wFt:7,lFt:19,thk:48}, 'PC2J':{wFt:3.5,lFt:12.125,thk:60}, 'PC2K':{wFt:6,lFt:18,thk:96}, 'PC3A':{wFt:9,lFt:10,thk:60}, 'PC3E':{wFt:9,lFt:10,thk:60}, 'PC4A':{wFt:9.5,lFt:9.5,thk:66}, 'PC4C':{wFt:9.5,lFt:9.5,thk:66}, 'PC4D':{wFt:9.5,lFt:9.5,thk:66}, 'PC4E':{wFt:9.5,lFt:9.5,thk:66}, 'PC4F':{wFt:9.5,lFt:9.5,thk:66}, 'PC4G':{wFt:18,lFt:18,thk:96}, 'PC6A':{wFt:9.5,lFt:15.5,thk:72}, 'PC6C':{wFt:9.5,lFt:15.5,thk:72}, 'PC6D':{wFt:9.5,lFt:15.5,thk:72}, 'PC6E':{wFt:9.5,lFt:15.5,thk:72}, 'PC6F':{wFt:9.5,lFt:15.5,thk:72}, 'PC6G':{wFt:9.5,lFt:15.5,thk:90}, 'PC8A':{wFt:12,lFt:20.5,thk:96}, 'PC8E':{wFt:12,lFt:20.5,thk:96}, 'PC8F':{wFt:12,lFt:20.5,thk:96}, 'PC8G':{wFt:4,lFt:21.5,thk:78}, 'PC8H':{wFt:9.5,lFt:23.5,thk:72}, 'PC9A':{wFt:10.417,lFt:30,thk:120}, 'PC10A':{wFt:9.5,lFt:27.5,thk:66}, 'PC15A':{wFt:35.5,lFt:98,thk:96}, 'PC45E':{wFt:15.5,lFt:87.5,thk:72}, 'MPC1':{wFt:2.5,lFt:2.5,thk:36}, 'MPC4A':{wFt:7,lFt:7}, 'MPC4B':{wFt:7,lFt:7,thk:54}, 'MPC6A':{wFt:7,lFt:11,thk:66}, 'MPC6B':{wFt:7,lFt:11,thk:66}, 'MPC6C':{wFt:7,lFt:11,thk:96}, 'MPC8A':{wFt:7,lFt:15,thk:75}, 'MPC8B':{wFt:7,lFt:15,thk:60}, 'MPC9A':{wFt:11,lFt:11,thk:60}, 'MPC9B':{wFt:11,lFt:11,thk:60}, 'MPC10A':{wFt:7,lFt:19,thk:66}, 'MPC18A':{thk:69.96}, 'MPC39A':{thk:75.96}, 'MPC6A-R':{wFt:11,lFt:20,thk:72}, 'MPC6B-R':{wFt:11,lFt:20,thk:75.96}, 'MPC8A-R':{wFt:14.5,lFt:15,thk:63.96}, 'MPC10A-R':{wFt:19,lFt:20,thk:75.96}, 'MPC12A-R':{wFt:20,lFt:20,thk:75.96}, 'MPC14A-R':{wFt:20,lFt:20,thk:75.96}, 'CP1':{wFt:3.5,lFt:3.5}, '12" Pit Slab':{wFt:17.1,lFt:20.75,thk:12}, '18" Pit Slab':{wFt:20,lFt:20,thk:18}, '5 x 2.5':{wFt:2.5,lFt:5,thk:24}, 'PC15A Mini':{wFt:15,lFt:17.5,thk:96}};
 
+// ════════════════════════════════════════════════════════════════════════════
+// EQUIPMENT ICONS — one source of truth for the map AND the host's panels.
+// Each icon is authored in a 24×24 box:  f = filled subpaths (SVG path data),
+// c = filled circles [cx,cy,r],  s = [path, strokeWidth] (round caps/joins).
+// The canvas draws them with Path2D; the host renders the SAME data as inline
+// SVG via OYFoundationMap.iconSvg(), so a rig looks identical in the sidebar,
+// the legend and on the map. Single-color silhouettes — they tint to whatever
+// the crew color is and stay legible down to ~14px.
+// ════════════════════════════════════════════════════════════════════════════
+const SEQ_ICONS = {
+    excavator:  { f:['M2.2 17.6h11a2 2 0 0 1 0 4h-11a2 2 0 0 1 0-4z','M3.4 10.6h5.2a1.1 1.1 0 0 1 1.1 1.1v5.2H2.3v-5.2a1.1 1.1 0 0 1 1.1-1.1z','M16.6 12.1h5.2l-.9 3.4a1.8 1.8 0 0 1-1.7 1.3h-1.4a1.8 1.8 0 0 1-1.7-1.3z'], s:[['M9.9 12.6 L15.4 7.4 L18.9 12.4',2]] },
+    breaker:    { f:['M2.2 17.6h11a2 2 0 0 1 0 4h-11a2 2 0 0 1 0-4z','M3.4 10.6h5.2a1.1 1.1 0 0 1 1.1 1.1v5.2H2.3v-5.2a1.1 1.1 0 0 1 1.1-1.1z','M16.6 10.8h4v5.4h-4z','M17.9 16.2h1.4l-.7 3.6z'], s:[['M9.9 12.6 L15 7 L18.6 10.8',2],['M15.4 19.4 L14 20.8 M21.4 19.4 L22.4 20.8',1.3]] },
+    acp:        { f:['M1.6 18.2h9.6a1.9 1.9 0 0 1 0 3.8H1.6a1.9 1.9 0 0 1 0-3.8z','M2.6 13.2h6.6v4.6H2.6z','M13.4 1.6h4.6v2h-4.6z'], s:[['M15.7 2.4 L15.7 20.4',2],['M9.2 14 L14.6 5.6',1.5],['M12.8 5.6 L18.6 7.6',1.5],['M12.8 9.2 L18.6 11.2',1.5],['M12.8 12.8 L18.6 14.8',1.5],['M12.8 16.4 L18.6 18.4',1.5]] },
+    drill:      { f:['M1.6 18.2h9.6a1.9 1.9 0 0 1 0 3.8H1.6a1.9 1.9 0 0 1 0-3.8z','M2.6 13.2h6.6v4.6H2.6z','M12.8 1.8h6v2.2h-6z','M12.6 7.4h6.4v2.6h-6.4z','M14.4 17.2h2.8l-1.4 3.4z'], s:[['M15.8 4 L15.8 17.4',2.2],['M9.2 14 L13 6.8',1.5],['M12.4 20.8 L19.2 20.8',1.6]] },
+    shoring:    { f:['M4.4 3.4h2.4v18h-2.4z','M10.8 3.4h2.4v18h-2.4z','M17.2 3.4h2.4v18h-2.4z'], s:[['M3 6.6 L21 6.6',1.6],['M3 11 L21 11',1.6],['M3 15.4 L21 15.4',1.6],['M3 19.8 L21 19.8',1.6]] },
+    crane:      { f:['M2.2 18.2h10.6a1.9 1.9 0 0 1 0 3.8H2.2a1.9 1.9 0 0 1 0-3.8z','M3 13.4h6.4v4.4H3z','M17.6 12.4h2.6v2.6h-2.6z'], s:[['M6.8 13.2 L18.9 3.2',2],['M18.9 3.6 L18.9 12.4',1.5],['M8.6 11.8 L10.4 14.2 M11.6 9.4 L13.4 11.8 M14.6 7 L16.4 9.4',1.1]] },
+    mixer:      { f:['M1.8 10.6h3.6l2 3.2v2.8H1.8z','M8.4 15.8 L8.4 9.6 L18 6.4 C20 5.8 21.8 7.2 21.8 9.2 L21.8 12.6 C21.8 14.4 20.4 15.8 18.6 15.8 Z'], c:[[5.4,18.6,2.2],[13.6,18.6,2.2],[18.4,18.6,2.2]], s:[['M10.6 8.8 L11.8 15.8 M14.4 7.6 L15.6 15.8 M18.2 6.6 L19.2 15.6',1]] },
+    pump:       { f:['M2 11.8h4.2l1.8 3v2.6H2z','M8.4 14.4h12.4v3H8.4z'], c:[[6.4,18.6,2],[15.2,18.6,2],[19,18.6,2]], s:[['M10 14 L10 5.6 L18.6 3.4',2],['M18.6 3.4 L21.2 8.4',1.8],['M21.2 8.4 L21.2 12.4',1.3]] },
+    dozer:      { f:['M2 16.4h11.6a2.2 2.2 0 0 1 0 4.4H2a2.2 2.2 0 0 1 0-4.4z','M3.8 9.4h5.2a1.1 1.1 0 0 1 1.1 1.1v5.4H2.7v-5.4a1.1 1.1 0 0 1 1.1-1.1z','M18.2 8.4h1.4c1.8 3 2.4 7.2 1.8 12h-3.2c.6-4.8 0-9-1.4-12z'], s:[['M11.6 14.6 L17.6 16.4',1.8]] },
+    loader:     { f:['M2.6 10h5v6H2.6z','M8 8.2h3.6a1 1 0 0 1 1 1V16H8z','M16.6 13.6h5.2v1.6l-1.4 3.6h-3.8z'], c:[[5.6,17.8,2.6],[12.4,17.8,2.6]], s:[['M12.4 11.4 L17.2 13.6',1.9]] },
+    roller:     { f:['M2.8 9.2h8.4a1.1 1.1 0 0 1 1.1 1.1v5H2.8z','M12.4 12.4h3v2.6h-3z'], c:[[5.6,17.8,2.4],[18,16.4,4]] },
+    dump:       { f:['M2 11.6h3.8l1.8 2.8v2.6H2z','M8.6 11.4h12.6v5.6H8.6z','M9.8 11.4c1.4-2.2 3.2-3.4 5.1-3.4s3.7 1.2 5.1 3.4z'], c:[[5.6,19,2.2],[13.8,19,2.2],[18.6,19,2.2]] },
+    crew:       { f:['M4.6 14.6c0-4.2 3.3-7.6 7.4-7.6s7.4 3.4 7.4 7.6v.8H4.6z','M2 15.4h20v2.8H2z'], s:[['M12 7.2 L12 4',1.8]] },
+    survey:     { f:['M7.8 5.4h7.2v3.6H7.8z','M15 6.2h4.2v2h-4.2z'], s:[['M11.4 9 L11.4 11.6',1.6],['M11.4 11.6 L6 21 M11.4 11.6 L11.4 21 M11.4 11.6 L16.8 21',1.5]] },
+};
+// Picker order + plain-English names (what a super would call the thing).
+const SEQ_ICON_LIST = [
+  ['excavator','Excavator'], ['breaker','Demo hammer'], ['acp','ACP / auger rig'], ['drill','Drill rig'],
+  ['shoring','Shoring wall'],  ['crane','Crane'],       ['mixer','Mixer truck'],   ['pump','Pump truck'],
+  ['dozer','Dozer'],           ['loader','Loader'],     ['roller','Compactor'],    ['dump','Dump truck'],
+  ['crew','Crew'],             ['survey','Survey'],
+];
+// Sensible default per activity, so an untouched crew already shows the right rig.
+const SEQ_ACT_ICON = { acp:'acp', shoring:'drill', excavate:'excavator', pour:'mixer', backfill:'dozer' };
+function seqIconName(c){ if(!c) return null; const k=c.icon||SEQ_ACT_ICON[c.activity]; return SEQ_ICONS[k]?k:null; }
+// Inline SVG of the same paths — for HTML panels (no <img>, no network).
+function seqIconSvg(name, size, color, cls){
+  const ic=SEQ_ICONS[name]; if(!ic) return '';
+  const col=color||'currentColor';
+  let p='';
+  (ic.f||[]).forEach(d=>{ p+=`<path d="${d}" fill="${col}"/>`; });
+  (ic.c||[]).forEach(c=>{ p+=`<circle cx="${c[0]}" cy="${c[1]}" r="${c[2]}" fill="${col}"/>`; });
+  (ic.s||[]).forEach(s=>{ p+=`<path d="${s[0]}" fill="none" stroke="${col}" stroke-width="${s[1]}" stroke-linecap="round" stroke-linejoin="round"/>`; });
+  return `<svg class="${cls||''}" width="${size||18}" height="${size||18}" viewBox="0 0 24 24" style="flex:none;display:block">${p}</svg>`;
+}
+
 function createFoundationMap(opts){
   opts = opts || {};
   const st = { mode:'explore', colorMode:opts.colorMode||'status', filter:'ALL', hideComplete:(localStorage.getItem('cup_fnd_hidedone')==='1'), showNames:(localStorage.getItem('cup_fnd_shownames')==='1'), showDates:(localStorage.getItem('cup_fnd_showdates')==='1'), hideRatslab:(localStorage.getItem('cup_fnd_hideratslab')==='1'), selId:null, zoomPct:100, tool:'none', markColor:'#fbbf24', seqTool:'none' };
@@ -325,7 +371,9 @@ function createFoundationMap(opts){
   let _seqPlaying=false, _seqRaf=0, _seqLastT=0, _seqSpeed=3;        // days per second
   let _seqStamp=false, _seqStampTitle='';                            // on-canvas date/progress badge (for video export)
   let _seqShowLabels=true;                                           // phase label circles on/off
+  let _seqShowIcons=true;                                            // equipment icons on crew tokens
   let _seqSelId=null, _seqDraft=null, _seqDrag=null, _seqClick=false, _seqRouteCrew=null;
+  const _seqIconCache={};                                            // name -> compiled Path2D set
 
   const seqOn=()=>!!(_seq && _seq.phases && Object.keys(_seq.phases).length);
   // day numbers (UTC, DST-proof) keep every comparison an integer compare
@@ -629,6 +677,14 @@ function createFoundationMap(opts){
   function drawSeqChrome(sc){
     if(!seqOn()) return;
     const pulse=0.5+0.5*Math.sin(performance.now()/300);
+    // Phases that already have a crew token parked on them get no activity badge —
+    // the rig riding the token says it better, and two discs on one pin is clutter.
+    const manned=new Set();
+    if(_seqShowIcons) seqCrews().forEach(c=>{
+      if(_seqLayer!=='all' && c.activity!==_seqLayer) return;
+      const at=crewAt(c,_seqDay);
+      if(at && at.mode==='work' && at.phase) manned.add(at.phase);
+    });
     if(_seqShowLabels) seqPhases().forEach(ph=>{
       const g=seqGeom(ph); if(!g.pts.length) return;
       const sx=g.pin[0]*sc+tx, sy=g.pin[1]*sc+ty;
@@ -649,6 +705,18 @@ function createFoundationMap(opts){
       ctx.beginPath(); ctx.arc(sx,sy,r,0,7); ctx.fill();
       ctx.strokeStyle=sel?'#52E6E0':hex2rgba(col, begun?1:0.85); ctx.lineWidth=sel?2.6:1.6; ctx.stroke();
       ctx.fillStyle= begun ? '#0b0f16' : (sel?'#9ff2ee':'#e8eefb'); ctx.fillText(label,sx,sy+0.5);
+      // A phase that is live right now wears a badge of whatever activity it is in,
+      // so you can read "this block is being augered / excavated / poured" at a glance.
+      if(_seqShowIcons && s2.active && !off && !manned.has(ph.id)){
+        const ik=SEQ_ACT_ICON[s2.active.key], acol=(SEQ_ACT_BY[s2.active.key]||{}).color||col;
+        if(ik){
+          const bx=sx+r*0.74+3.5, by=sy-r*0.74-3.5;
+          ctx.fillStyle='rgba(8,11,18,0.94)'; ctx.beginPath(); ctx.arc(bx,by,9.5,0,7); ctx.fill();
+          ctx.strokeStyle=hex2rgba(acol,0.95); ctx.lineWidth=1.4; ctx.stroke();
+          drawSeqIcon(ik, bx, by, 13.5, acol);
+          ctx.font='800 12px Inter, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        }
+      }
       if(sel || st.seqTool==='pin'){                                   // counts on the selected phase only — keeps it clean
         const fl=phaseFootings(ph.id);
         const sub=fl.count+' ftg · '+fmt(fl.cy)+' CY';
@@ -684,14 +752,37 @@ function createFoundationMap(opts){
       const sx=w[0]*sc+tx, sy=w[1]*sc+ty;
       if(sx<-40||sy<-40||sx>cssW+40||sy>cssH+40) return;
       const working=at.mode==='work';
-      const rr=12 + (working?2.5*pulse:1.5);
+      const ico=_seqShowIcons ? seqIconName(c) : null;
+      const rr=(ico?14:12) + (working?2.5*pulse:1.5);
       ctx.save(); ctx.shadowColor=hex2rgba(col,0.75); ctx.shadowBlur=working?10+6*pulse:14;
       ctx.fillStyle=hex2rgba(col,0.24+(working?0.2*pulse:0.06)); ctx.beginPath(); ctx.arc(sx,sy,rr+8,0,7); ctx.fill();
       ctx.shadowBlur=working?6:9;
       ctx.fillStyle=hex2rgba(col,0.98); ctx.beginPath(); ctx.arc(sx,sy,rr,0,7); ctx.fill(); ctx.restore();
       ctx.strokeStyle='rgba(8,11,18,0.9)'; ctx.lineWidth=2; ctx.stroke();
-      ctx.fillStyle='#08090f'; ctx.font='800 11px Inter, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(crewTag(c), sx, sy+0.5);
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      // The rig itself rides the token; the crew tag drops to a small badge so two
+      // excavators (Zarp #1 / #2) are still told apart by color + number.
+      if(ico && drawSeqIcon(ico, sx, sy, rr*1.6, '#08090f')){
+        const tag=crewTag(c);
+        ctx.font='800 9px Inter, sans-serif';
+        const bw=Math.max(15, ctx.measureText(tag).width+9), bx=sx+rr-1, by=sy+rr-2;
+        ctx.fillStyle='rgba(8,11,18,0.92)'; rrect(ctx,bx-bw/2,by-6.5,bw,13,6.5); ctx.fill();
+        ctx.strokeStyle=hex2rgba(col,0.9); ctx.lineWidth=1.1; ctx.stroke();
+        ctx.fillStyle=hex2rgba(col,1); ctx.fillText(tag,bx,by+0.5);
+      } else {
+        ctx.fillStyle='#08090f'; ctx.font='800 11px Inter, sans-serif';
+        ctx.fillText(crewTag(c), sx, sy+0.5);
+      }
+      // Short crew name under the token — so a captured video says WHO is moving.
+      if(_seqShowIcons){
+        const nm=String(c.name||'').replace(/\s*(Crew|Rig)\s*/gi,' ').trim();
+        if(nm){
+          ctx.font='700 9.5px Inter, sans-serif';
+          const tw=ctx.measureText(nm).width;
+          ctx.fillStyle='rgba(6,9,16,0.72)'; rrect(ctx,sx-tw/2-5,sy+rr+4,tw+10,14,7); ctx.fill();
+          ctx.fillStyle=hex2rgba(col,0.95); ctx.fillText(nm, sx, sy+rr+11.4);
+        }
+      }
     });
     ctx.textAlign='left';
     if(_seqStamp) drawSeqStamp();
@@ -722,6 +813,31 @@ function createFoundationMap(opts){
   function setSeqStamp(on, title){ _seqStamp=!!on; if(title!=null) _seqStampTitle=title; scheduleDraw(); }
   function setSeqLabels(on){ _seqShowLabels=!!on; scheduleDraw(); }
   function seqLabelsOn(){ return _seqShowLabels; }
+  function setSeqIcons(on){ _seqShowIcons=!!on; scheduleDraw(); }
+  function seqIconsOn(){ return _seqShowIcons; }
+  // ── equipment icons on the canvas ──
+  // Path2D-compiled once per icon, then drawn scaled/centred wherever we need it.
+  function seqIconPaths(name){
+    let p=_seqIconCache[name];
+    if(p!==undefined) return p;
+    const ic=SEQ_ICONS[name];
+    if(!ic || typeof Path2D==='undefined') return (_seqIconCache[name]=null);
+    const fills=(ic.f||[]).map(d=>new Path2D(d));
+    (ic.c||[]).forEach(c=>{ const q=new Path2D(); q.arc(c[0],c[1],c[2],0,7); fills.push(q); });
+    const strokes=(ic.s||[]).map(s=>[new Path2D(s[0]), s[1]]);
+    return (_seqIconCache[name]={ fills, strokes });
+  }
+  function drawSeqIcon(name, cx, cy, size, color){
+    const p=seqIconPaths(name); if(!p) return false;
+    const k=size/24;
+    ctx.save();
+    ctx.translate(cx-size/2, cy-size/2); ctx.scale(k,k);
+    ctx.fillStyle=color; p.fills.forEach(f=>ctx.fill(f));
+    ctx.strokeStyle=color; ctx.lineCap='round'; ctx.lineJoin='round';
+    p.strokes.forEach(s=>{ ctx.lineWidth=s[1]; ctx.stroke(s[0]); });
+    ctx.restore();
+    return true;
+  }
   function crewTag(c){
     const n=String(c.name||'').replace(/[^A-Za-z0-9 #]/g,'').trim();
     const num=/#\s*(\d+)/.exec(n);
@@ -820,7 +936,7 @@ function createFoundationMap(opts){
       out.phases=seqPhases().length;
       out.crews=seqCrews().map(c=>{ const at=crewAt(c,_seqDay);
         const ph=at?(_seq.phases[at.phase]||_seq.phases[at.to]):null;
-        return { id:c.id, name:c.name, color:c.color, activity:c.activity,
+        return { id:c.id, name:c.name, color:c.color, activity:c.activity, icon:seqIconName(c),
                  mode:at?at.mode:'idle', phase:ph?ph.label:'', p:at?at.p:0 }; });
     }
     return out;
@@ -1894,6 +2010,7 @@ function createFoundationMap(opts){
     setSeqFilter, getSeqFilter, seqLetters,
     setSeqTool, setSeqRouteCrew, getSeqRouteCrew, finishSeqDraft, cancelSeqDraft, undoSeqDraftPoint,
     seqPlay, seqIsPlaying(){ return _seqPlaying; }, setSeqSpeed, setSeqStamp, setSeqLabels, seqLabelsOn,
+    setSeqIcons, seqIconsOn, seqIconName,
     seqSelect, getSeqSelected, seqActs, seqGroups, getSeqStats,
     phaseFootings, hullFromSelection, pourHullNorm, listPours, planSize,
     hasSelection(){ return !!(selFootings && selFootings.size); },
@@ -1903,6 +2020,8 @@ function createFoundationMap(opts){
 
   window.OYFoundationMap = {
     create: createFoundationMap,
-    version: '1.0.0',
+    version: '1.1.0',
+    // equipment icon set — shared with the host so panels and map never drift
+    ICONS: SEQ_ICONS, ICON_LIST: SEQ_ICON_LIST, ACT_ICON: SEQ_ACT_ICON, iconSvg: seqIconSvg,
   };
 })();

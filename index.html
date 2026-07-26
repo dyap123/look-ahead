@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Saira:wght@600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
 <!-- Material Symbols subset to only the icons this app uses (full font is ~300KB; this is a fraction). display=block avoids flashing the icon-name text while loading. -->
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=add,add_circle,add_link,architecture,arrow_back,arrow_downward,arrow_upward,article,bolt,calendar_add_on,calendar_month,calendar_view_month,calendar_view_week,campaign,category,check_circle,chevron_left,chevron_right,close,cloud_done,cloud_off,content_copy,create_new_folder,delete,description,download,download_done,edit,edit_note,elevator,event,expand_less,expand_more,fact_check,fiber_manual_record,fit_screen,folder_open,foundation,fullscreen,fullscreen_exit,grid_4x4,grid_view,groups,handyman,health_and_safety,help_center,highlight_alt,hourglass_top,how_to_reg,insights,inventory_2,ios_share,label,label_off,library_add,link,list,lock,lock_open,open_in_new,pan_tool,pause,payments,pending,picture_as_pdf,play_arrow,plumbing,polyline,push_pin,radio_button_unchecked,redo,remove,report,route,save,schedule,science,search,settings,skip_next,skip_previous,splitscreen,straighten,sync,table_view,task_alt,touch_app,tune,undo,unfold_less,unfold_more,upload_file,verified,videocam,view_list,warning,zoom_in,zoom_out&display=block" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=add,add_circle,add_link,architecture,arrow_back,arrow_downward,arrow_upward,article,bolt,calendar_add_on,calendar_month,calendar_view_month,calendar_view_week,campaign,category,check_circle,chevron_left,chevron_right,close,cloud_done,cloud_off,content_copy,create_new_folder,delete,description,download,download_done,edit,edit_note,elevator,event,expand_less,expand_more,fact_check,fiber_manual_record,fit_screen,folder_open,foundation,fullscreen,fullscreen_exit,grid_4x4,grid_view,groups,handyman,health_and_safety,help_center,highlight_alt,hourglass_top,how_to_reg,insights,inventory_2,keyboard,ios_share,label,label_off,library_add,link,list,lock,lock_open,open_in_new,pan_tool,pause,payments,pending,picture_as_pdf,play_arrow,plumbing,polyline,push_pin,radio_button_unchecked,redo,remove,report,route,save,schedule,science,search,settings,skip_next,skip_previous,splitscreen,straighten,sync,table_view,task_alt,touch_app,tune,undo,unfold_less,unfold_more,upload_file,verified,videocam,view_list,warning,zoom_in,zoom_out&display=block" rel="stylesheet" />
 <link rel="stylesheet" href="assets/tw.css" />
 <!-- Firebase compat (defer: not render-blocking; boot() runs on DOMContentLoaded, after these execute) -->
 <script defer src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -199,7 +199,7 @@ const state = {
   att: { dates:[], date:'', records:{}, foremen:{}, members:{}, areas:{}, loaded:false, loading:false },
   infoflow: { ann:{}, docs:{}, facts:{}, config:{}, loaded:false, loading:false, subject:null, unlocked:(localStorage.getItem('la_if_unlocked')==='1') },
   seq: { maps:{}, mapId:null, loaded:false, loading:false, dragging:false, sel:null, routeCrew:null,
-         tool:'none', layer:'all', mode:'plan', speed:3, playing:false, rail:true, recording:false, labels:true, seqFilter:'ALL', railTab:'phases', split:false,
+         tool:'none', layer:'all', mode:'plan', speed:3, playing:false, rail:true, recording:false, labels:true, icons:true, seqFilter:'ALL', railTab:'phases', split:false, keys:false,
          pours:null, membership:null, edits:null, types:null, foot:null },
 };
 
@@ -2157,11 +2157,23 @@ const SEQ_ACT_ROWS = [
 const SEQ_GROUP_HEX = { blue:'#4A8EFF', green:'#41A447', amber:'#FFBF00', violet:'#8B5CF6', teal:'#2dd4bf', rose:'#f472b6', slate:'#94a3b8' };
 // The template's four crews, offered when a map is created so the common case is one click.
 const SEQ_CREW_PRESETS = [
-  { name:'Zarp Excavation Crew #1', color:'#ef4444', activity:'excavate' },
-  { name:'Zarp Excavation Crew #2', color:'#991b1b', activity:'excavate' },
-  { name:'Malcolm Shoring Rig',     color:'#22d3ee', activity:'shoring'  },
-  { name:'Malcolm ACP Rig',         color:'#f97316', activity:'acp'      },
+  { name:'Zarp Excavation Crew #1', color:'#ef4444', activity:'excavate', icon:'excavator' },
+  { name:'Zarp Excavation Crew #2', color:'#991b1b', activity:'excavate', icon:'excavator' },
+  { name:'Malcolm Shoring Rig',     color:'#22d3ee', activity:'shoring',  icon:'drill'     },
+  { name:'Malcolm ACP Rig',         color:'#f97316', activity:'acp',      icon:'acp'       },
 ];
+/* ---- equipment icons: the engine owns the artwork, we just render it ----
+   Same 24×24 path data drives the canvas tokens and these HTML panels, so a rig
+   in the sidebar is literally the same drawing that rides the map. Looked up
+   lazily — the engine is a deferred script, so it does not exist yet while this
+   one is being parsed. */
+function seqIconList(){ return (window.OYFoundationMap && window.OYFoundationMap.ICON_LIST) || []; }
+function seqActIcon(){ return (window.OYFoundationMap && window.OYFoundationMap.ACT_ICON) || {}; }
+function seqIcon(name, size, color){
+  const F=window.OYFoundationMap;
+  return (F && F.iconSvg && name) ? F.iconSvg(name, size||16, color||'currentColor') : '';
+}
+function seqCrewIcon(c){ return (c && c.icon) || seqActIcon()[c && c.activity] || 'crew'; }
 let seqMap=null, _seqSaveT=null, _seqWired=false;
 function getSeqMap(){
   if(!seqMap){
@@ -2184,7 +2196,12 @@ function ensureSequencing(){
     const v=s.val()||{};
     // Never clobber a doc the canvas is mid-drag on — the engine mutates poly/pin
     // in place and the echo of our own write would snap the vertex back.
-    if(!state.seq.dragging) state.seq.maps=v;
+    if(!state.seq.dragging){
+      state.seq.maps=v;
+      // Re-base undo on whatever landed, so a teammate's edit never ends up inside
+      // OUR undo stack (our own edits commit before the write, so nothing is lost).
+      if(_seqBaseId && _seqBaseId===state.seq.mapId) _seqBase=seqSnap();
+    }
     state.seq.loaded=true; state.seq.loading=false;
     if(!state.seq.mapId || !state.seq.maps[state.seq.mapId]) state.seq.mapId=Object.keys(state.seq.maps)[0]||null;
     if(state.nav==='sequencing'){ render(); }
@@ -2212,10 +2229,69 @@ function seqFeedMap(){
 /* ---- persistence (writes straight to the cloud, like Info Flow / Tools) ---- */
 function seqSave(opts){
   const d=seqDoc(); if(!d||!db) return;
+  seqUndoCommit(opts && opts.label);
   d.updatedAt=new Date().toISOString();
   clearTimeout(_seqSaveT);
   const write=()=>{ state.seq.dragging=false; db.ref(SEQ_PATH+'/'+d.id).set(d).catch(()=>toast('Sequence save failed','warn')); };
   if(opts && opts.now) write(); else { state.seq.dragging=true; _seqSaveT=setTimeout(write, 500); }
+}
+
+/* ---- undo / redo for the sequence map (⌘Z / ⇧⌘Z) --------------------------
+   Snapshot stack over the whole sequence doc. EVERY edit path — the panels, the
+   canvas (vertex drags, pin moves, route clicks), seeding, populate — funnels
+   through seqSave(), so committing there catches all of them without dotting
+   pushUndo() calls around like the schedule side does. `_seqBase` holds the doc
+   as it stood before the current edit; a commit pushes that and re-bases.
+   updatedAt is stripped from the comparison or every save would look like a change. */
+let seqUndoStack=[], seqRedoStack=[], _seqBase=null, _seqBaseId=null, _seqUndoLabel='', _seqUndoAt=0;
+const SEQ_UNDO_MAX=60;
+function seqSnap(d){ d=d||seqDoc(); return d?JSON.stringify(d,(k,v)=>k==='updatedAt'?undefined:v):null; }
+function seqUndoReset(){ _seqBaseId=state.seq.mapId; _seqBase=seqSnap(); seqUndoStack=[]; seqRedoStack=[]; }
+function seqUndoCommit(label){
+  const d=seqDoc(); if(!d) return;
+  if(_seqBaseId!==d.id){ _seqBaseId=d.id; _seqBase=seqSnap(d); seqUndoStack=[]; seqRedoStack=[]; return; }
+  const cur=seqSnap(d);
+  if(_seqBase && cur && _seqBase!==cur){
+    const now=Date.now();
+    // One vertex drag fires several saves — fold a rapid burst of the same kind of
+    // edit into a single undo step so ⌘Z doesn't have to be pressed 12 times.
+    const lbl=label||'map edit';
+    const burst = lbl===_seqUndoLabel && (now-_seqUndoAt)<900;
+    if(!burst){
+      seqUndoStack.push({ snap:_seqBase, label:lbl });
+      if(seqUndoStack.length>SEQ_UNDO_MAX) seqUndoStack.shift();
+      seqRedoStack=[];
+    }
+    _seqUndoLabel=lbl; _seqUndoAt=now;
+  }
+  _seqBase=cur;
+}
+function seqApplySnap(snap){
+  const obj=JSON.parse(snap); if(!obj||!obj.id) return;
+  state.seq.maps[obj.id]=obj; state.seq.mapId=obj.id;
+  if(state.seq.sel && !(obj.phases&&obj.phases[state.seq.sel])) state.seq.sel=null;
+  if(state.seq.routeCrew && !(obj.crews&&obj.crews[state.seq.routeCrew])){ state.seq.routeCrew=null; state.seq.tool='none'; }
+  _seqBaseId=obj.id; _seqBase=seqSnap(obj); _seqUndoLabel=''; _seqUndoAt=0;
+  obj.updatedAt=new Date().toISOString();
+  clearTimeout(_seqSaveT); state.seq.dragging=false;
+  if(db) db.ref(SEQ_PATH+'/'+obj.id).set(obj).catch(()=>toast('Sequence save failed','warn'));
+  seqPushToMap(); render();
+}
+function seqUndo(){
+  if(!seqDoc()) return;
+  if(!seqUndoStack.length) return toast('Nothing to undo','warn');
+  const e=seqUndoStack.pop();
+  seqRedoStack.push({ snap:seqSnap(), label:e.label });
+  seqApplySnap(e.snap);
+  toast('Undone — '+e.label);
+}
+function seqRedo(){
+  if(!seqDoc()) return;
+  if(!seqRedoStack.length) return toast('Nothing to redo','warn');
+  const e=seqRedoStack.pop();
+  seqUndoStack.push({ snap:seqSnap(), label:e.label });
+  seqApplySnap(e.snap);
+  toast('Redone — '+e.label);
 }
 
 /* ---- linked schedule tasks: a linked activity row takes the task's dates ----
@@ -2278,7 +2354,48 @@ function seqPopulateSchedule(){
   toast(`Built a ${created}-task schedule from the sequence and linked it back — open the Schedule tab`,'ok');
   setNav('schedule');
 }
-function seqToggleLabels(){ state.seq.labels=!(state.seq.labels!==false); const m=getSeqMap(); if(m) m.setSeqLabels(state.seq.labels); render(); }
+/* Re-render, unless we are playing full-screen — render() rebuilds #seqStage and
+   that silently drops out of full screen. In full screen the HUD patch is enough. */
+function seqRenderSafe(){ if(document.fullscreenElement){ seqHudPaint(); return; } render(); }
+function seqToggleLabels(){ state.seq.labels=!(state.seq.labels!==false); const m=getSeqMap(); if(m) m.setSeqLabels(state.seq.labels); seqRenderSafe(); }
+function seqToggleIcons(){ state.seq.icons=!(state.seq.icons!==false); const m=getSeqMap(); if(m&&m.setSeqIcons) m.setSeqIcons(state.seq.icons); seqRenderSafe(); }
+function seqToggleKeys(){ state.seq.keys=!state.seq.keys; render(); }
+function seqJump(where){
+  const m=getSeqMap(); if(!m) return;
+  m.seqPlay(false); state.seq.playing=false;
+  const r=m.seqRange(); if(r.min==null) return;
+  m.setSeqPlayhead(where==='end'?r.max:r.min); seqHudPaint();
+}
+/* Shortcut reference — the same keys the handler in boot() listens for. */
+function seqKeysCard(){
+  const rows=[
+    ['⌘Z / Ctrl+Z','Undo the last map edit'],
+    ['⇧⌘Z / Ctrl+Y','Redo'],
+    ['⌘S','Save now'],
+    ['P','Play / pause'],
+    ['← →','Step a day (hold ⇧ for a week)'],
+    ['Home / End','Jump to the first / last date'],
+    ['1 · 2 · 3','Speed 1× · 3× · 7×'],
+    ['I','Equipment icons on / off'],
+    ['T','Phase labels on / off'],
+    ['S','Split view (map ↔ schedule)'],
+    ['F','Full screen'],
+    ['Esc','Cancel the zone being drawn'],
+    ['Enter','Close the zone being drawn'],
+    ['?','Show / hide this card'],
+  ];
+  return `<div class="card p-3 mb-3">
+    <div class="flex items-center gap-2 mb-2"><span class="ms text-[16px]" style="color:var(--primary)">keyboard</span>
+      <span class="lcaps">Keyboard shortcuts</span>
+      <span class="text-white/35" style="font-size:11px">— they work whenever you are not typing in a field</span>
+      <button class="icobtn ml-auto" onclick="seqToggleKeys()" title="Close"><span class="ms text-[16px]">close</span></button></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:5px 14px">
+      ${rows.map(r=>`<div class="flex items-center gap-2" style="font-size:11.5px">
+        <span class="mono" style="min-width:88px;padding:2px 6px;border-radius:5px;background:rgba(255,255,255,.06);border:1px solid var(--outline-v);font-size:10.5px;text-align:center">${r[0]}</span>
+        <span class="text-white/60">${r[1]}</span></div>`).join('')}
+    </div>
+  </div>`;
+}
 
 /* ---- map lifecycle ---- */
 function seqNewMap(){
@@ -2317,7 +2434,7 @@ function seqAddPhase(poly, opts){
   d.phases[id]={ id, label:opts.label||seqNextLabel(), group:opts.group||groups[Object.keys(d.phases).length%groups.length],
                  order:Object.keys(d.phases).length, poly, pin:null, acts };
   state.seq.sel=id;
-  seqSave({now:true});
+  seqSave({now:true, label:'add phase'});
   return id;
 }
 function seqDeletePhase(id){
@@ -2326,11 +2443,23 @@ function seqDeletePhase(id){
   delete d.phases[id];
   Object.values(d.crews||{}).forEach(c=>{ c.route=(c.route||[]).filter(p=>p!==id); });   // drop it from every route too
   if(state.seq.sel===id) state.seq.sel=null;
-  seqSave({now:true}); render(); toast('Phase deleted');
+  seqSave({now:true, label:'delete phase'}); render(); toast('Phase deleted');
 }
 function seqSetPhase(id, field, val){
   const d=seqDoc(); const ph=d&&d.phases[id]; if(!ph) return;
-  ph[field]=val; seqSave(); render();
+  ph[field]=val; seqSave({label:'phase '+field}); render();
+}
+/* The one colour a phase actually is — what the engine paints, what the panels show. */
+function seqPhaseColor(ph){ return (ph && ph.color) || SEQ_GROUP_HEX[ph && ph.group] || SEQ_GROUP_HEX.slate; }
+/* Setting a colour writes ph.color (the engine's source of truth) AND keeps the legacy
+   palette name in step, so the name and the swatch can never drift apart. */
+function seqSetPhaseColor(id, val){
+  const d=seqDoc(); const ph=d&&d.phases[id]; if(!ph||!val) return;
+  const hex = SEQ_GROUP_HEX[val] || val;
+  ph.color=hex;
+  const named=Object.keys(SEQ_GROUP_HEX).find(g=>SEQ_GROUP_HEX[g].toLowerCase()===String(hex).toLowerCase());
+  if(named) ph.group=named;
+  seqSave({label:'phase colour'}); seqPushToMap(); render();
 }
 function seqSetAct(id, key, field, val){
   const d=seqDoc(); const ph=d&&d.phases[id]; if(!ph) return;
@@ -2340,7 +2469,7 @@ function seqSetAct(id, key, field, val){
     const r=val?state.resolved[val]:null;
     if(r){ ph.acts[key].start=r.start; ph.acts[key].end=r.finish; }
   }
-  seqSave(); seqPushToMap(); render();
+  seqSave({label:'activity dates'}); seqPushToMap(); render();
 }
 function seqPhaseFromSelection(){
   const m=getSeqMap(); if(!m) return;
@@ -2364,7 +2493,7 @@ function seqSeedFromPours(){
     if(id){ d.phases[id].srcPour=p.id; n++; }
   });
   state.seq.sel=null;
-  seqSave({now:true}); seqPushToMap(); render();
+  seqSave({now:true, label:'seed phases'}); seqPushToMap(); render();
   toast(n?`Seeded ${n} phase(s) from CUP pours`:'Every pour already has a phase','ok');
 }
 
@@ -2374,18 +2503,21 @@ function seqAddCrew(){
   const name=(prompt('Crew or rig name:','Crew')||'').trim(); if(!name) return;
   const id=uid('cr_');
   d.crews=d.crews||{};
-  d.crews[id]={ id, name, color:'#38bdf8', activity:'excavate', order:Object.keys(d.crews).length, route:[] };
-  seqSave({now:true}); render();
+  d.crews[id]={ id, name, color:'#38bdf8', activity:'excavate', icon:'crew', order:Object.keys(d.crews).length, route:[] };
+  seqSave({now:true, label:'add crew'}); render();
 }
 function seqSetCrew(id, field, val){
   const d=seqDoc(); const c=d&&d.crews&&d.crews[id]; if(!c) return;
-  c[field]=val; seqSave(); seqPushToMap(); render();
+  c[field]=val; seqSave({label:'crew '+field}); seqPushToMap(); render();
 }
+/* Equipment icon per crew — what rides its token on the map. */
+function seqIconPick(id){ state.seq.iconPick=(state.seq.iconPick===id)?null:id; render(); }
+function seqSetCrewIcon(id, icon){ state.seq.iconPick=null; seqSetCrew(id,'icon',icon); }
 function seqDeleteCrew(id){
   const d=seqDoc(); const c=d&&d.crews&&d.crews[id]; if(!c) return;
   if(!confirm(`Delete "${c.name}" and its route?`)) return;
   delete d.crews[id]; if(state.seq.routeCrew===id) state.seq.routeCrew=null;
-  seqSave({now:true}); render();
+  seqSave({now:true, label:'delete crew'}); render();
 }
 function seqRouteMode(id){
   const m=getSeqMap(); if(!m) return;
@@ -2398,7 +2530,7 @@ function seqRouteMode(id){
 }
 function seqClearRoute(id){
   const d=seqDoc(); const c=d&&d.crews&&d.crews[id]; if(!c) return;
-  c.route=[]; seqSave({now:true}); seqPushToMap(); render();
+  c.route=[]; seqSave({now:true, label:'clear route'}); seqPushToMap(); render();
 }
 
 /* ---- tools / transport ---- */
@@ -2433,7 +2565,7 @@ function seqScrub(v){
   const r=m.seqRange(); if(r.min==null) return;
   m.setSeqPlayhead(r.min + Math.round(+v||0)); seqHudPaint();
 }
-function seqSetSpeed(v){ const m=getSeqMap(); if(!m) return; state.seq.speed=+v; m.setSeqSpeed(+v); render(); }
+function seqSetSpeed(v){ const m=getSeqMap(); if(!m) return; state.seq.speed=+v; m.setSeqSpeed(+v); seqRenderSafe(); }
 function seqSetLayer(l){ const m=getSeqMap(); if(!m) return; state.seq.layer=l; m.setSeqLayer(l); render(); }
 function seqSetMode(md){ const m=getSeqMap(); if(!m) return; state.seq.mode=md; m.setSeqMode(md); render(); }
 /* Sequence isolation filter — click a letter to highlight that sequence's footings and fade the rest. */
@@ -2494,7 +2626,7 @@ function seqHudPaint(){
       const where = c.phase ? (c.mode==='travel'?('→ '+c.phase):c.phase) : '—';
       const verb  = c.mode==='work'?'working':(c.mode==='travel'?'moving':(c.mode==='done'?'finished':'not started'));
       return `<div class="flex items-center gap-1.5 whitespace-nowrap" title="${esc(c.name)} · ${verb}">
-        <span style="width:9px;height:9px;border-radius:50%;background:${c.color};display:inline-block;flex:none"></span>
+        <span style="color:${c.color};flex:none;opacity:${c.mode==='work'||c.mode==='travel'?1:0.45}">${seqIcon(c.icon||seqCrewIcon(c),16,c.color)}</span>
         <span class="text-white/75" style="font-size:11px">${esc(String(c.name).replace(/^(Zarp|Malcolm)\s+/,''))}</span>
         <span class="text-white/40" style="font-size:11px">${esc(where)}</span></div>`;
     }).join('') || '<span class="text-white/30" style="font-size:11px">No crews on this layer</span>';
@@ -2557,7 +2689,8 @@ function sequencingView(){
           ? `<button class="btn btn-sm" style="background:#7f1d1d;color:#fff" disabled><span class="ms text-[16px]" style="animation:pulse 1s infinite">fiber_manual_record</span>Recording…</button>`
           : `<button class="btn btn-ghost btn-sm" onclick="seqRecordVideo()" title="Play the sequence and download it as a video"><span class="ms text-[16px]">videocam</span>Record video</button>`}
         <button class="btn btn-ghost btn-sm" onclick="seqExportPdf()"><span class="ms text-[16px]">picture_as_pdf</span>Export</button>
-        <button class="btn btn-ghost btn-sm ${state.seq.labels===false?'':'text-sky-300'}" onclick="seqToggleLabels()" title="Show or hide the phase-letter labels on the map"><span class="ms text-[16px]">${state.seq.labels===false?'label_off':'label'}</span>Labels</button>
+        <button class="btn btn-ghost btn-sm ${state.seq.labels===false?'':'text-sky-300'}" onclick="seqToggleLabels()" title="Show or hide the phase-letter labels on the map (T)"><span class="ms text-[16px]">${state.seq.labels===false?'label_off':'label'}</span>Labels</button>
+        <button class="btn btn-ghost btn-sm ${state.seq.icons===false?'':'text-sky-300'}" onclick="seqToggleIcons()" title="Show the equipment icon for each crew instead of its initials (I)" style="gap:5px">${seqIcon('excavator',16)}Icons</button>
         <button class="btn btn-ghost btn-sm" onclick="seqToggleRail()" title="Show/hide the side panel"><span class="ms text-[16px]">${state.seq.rail?'unfold_less':'unfold_more'}</span></button>
       </div>
     </div>
@@ -2568,14 +2701,20 @@ function sequencingView(){
         ${toolBtn('zone','Draw zone','polyline','Click vertices to trace a phase — Enter or double-click to close, Esc to cancel')}
         ${toolBtn('pin','Move / edit','pan_tool','Drag zone vertices and label pins')}
       </div>
+      <div class="seg" style="padding:2px">
+        <button class="icobtn ${seqUndoStack.length?'':'opacity-30'}" title="Undo ${seqUndoStack.length?'“'+esc(seqUndoStack[seqUndoStack.length-1].label)+'”':''} (⌘Z)" onclick="seqUndo()"><span class="ms text-[18px]">undo</span></button>
+        <button class="icobtn ${seqRedoStack.length?'':'opacity-30'}" title="Redo (⇧⌘Z)" onclick="seqRedo()"><span class="ms text-[18px]">redo</span></button>
+      </div>
       <button class="btn btn-ghost btn-sm" onclick="seqPhaseFromSelection()" title="Box-select footings with the Select tool, then click this"><span class="ms text-[16px]">highlight_alt</span>Phase from selection</button>
       <button class="btn btn-ghost btn-sm" onclick="seqSeedFromPours()" title="One phase per CUP pour, outlined around its assigned footings"><span class="ms text-[16px]">library_add</span>Seed from CUP pours</button>
+      <button class="icobtn ml-auto ${state.seq.keys?'text-sky-300':''}" title="Keyboard shortcuts (?)" onclick="seqToggleKeys()"><span class="ms text-[18px]">keyboard</span></button>
       ${tool==='zone' ? `<span class="chip" style="background:rgba(82,230,224,.15);color:#7df0ec">Click to place vertices
         <button class="btn btn-sm btn-green ml-1" onclick="seqFinishZone()">Close zone</button></span>` : ''}
       ${state.seq.routeCrew && d.crews[state.seq.routeCrew] ? `<span class="chip" style="background:${d.crews[state.seq.routeCrew].color}22;color:${d.crews[state.seq.routeCrew].color}">
         Routing ${esc(d.crews[state.seq.routeCrew].name)} — click phases in order
         <button class="btn btn-sm btn-ghost ml-1" onclick="seqRouteMode('${state.seq.routeCrew}')">Done</button></span>` : ''}
     </div>
+    ${state.seq.keys ? seqKeysCard() : ''}
 
     <div class="flex gap-3 items-start" style="flex-wrap:wrap">
       ${(state.seq.rail && !state.seq.split) ? `<div class="card" style="width:360px;flex:none;max-width:100%;position:sticky;top:60px;max-height:calc(100vh - 90px);display:flex;flex-direction:column;padding:0;overflow:hidden">
@@ -2633,7 +2772,10 @@ document.addEventListener('fullscreenchange', ()=>{
 function seqTransport(layers){
   const sp=state.seq.speed;
   const spBtn=(v,l)=>`<button class="btn btn-sm ${sp===v?'btn-green':'btn-ghost'}" onclick="seqSetSpeed(${v})">${l}</button>`;
-  const lyBtn=(k,l)=>`<button class="btn btn-sm ${state.seq.layer===k?'btn-green':'btn-ghost'}" onclick="seqSetLayer('${k}')">${l}</button>`;
+  const lyBtn=(k,l)=>{
+    const ic=seqActIcon()[k];
+    return `<button class="btn btn-sm ${state.seq.layer===k?'btn-green':'btn-ghost'}" onclick="seqSetLayer('${k}')" style="gap:5px">${ic?seqIcon(ic,14):''}${l}</button>`;
+  };
   const mdBtn=(k,l,t)=>`<button class="btn btn-sm ${state.seq.mode===k?'btn-green':'btn-ghost'}" onclick="seqSetMode('${k}')" title="${t}">${l}</button>`;
   return `<div class="card mt-3 px-3 py-2.5">
     <div class="flex items-center gap-2 flex-wrap">
@@ -2684,7 +2826,7 @@ function seqTransport(layers){
 function seqPhaseListPanel(phases){
   const rows=phases.map(ph=>{
     const on=state.seq.sel===ph.id;
-    const g=ph.color||SEQ_GROUP_HEX[ph.group]||SEQ_GROUP_HEX.slate;
+    const g=seqPhaseColor(ph);
     const m=getSeqMap();
     const fl=m?m.phaseFootings(ph.id):{count:0,cy:0};
     const dates=SEQ_ACT_ROWS.filter(a=>ph.acts&&ph.acts[a.key]&&ph.acts[a.key].start).length;
@@ -2719,7 +2861,7 @@ function seqPhasePanel(ph){
     const linked=!!r.taskId;
     return `<div class="px-2.5 py-1.5" style="border-top:1px solid var(--outline-v)">
       <div class="flex items-center gap-1.5 mb-1">
-        <span style="width:8px;height:8px;border-radius:50%;background:${a.color};flex:none"></span>
+        <span style="color:${a.color};flex:none">${seqIcon(seqActIcon()[a.key],15,a.color)}</span>
         <span style="font-size:11px;font-weight:600">${a.label}</span>
         ${linked?'<span class="ms text-[13px] ml-auto" style="color:var(--primary)" title="Dates come from the linked schedule task">link</span>':''}
       </div>
@@ -2732,12 +2874,20 @@ function seqPhasePanel(ph){
       <select class="fld w-full mt-1" style="font-size:10.5px;padding:3px 5px" onchange="seqSetAct('${ph.id}','${a.key}','taskId',this.value)">${taskOpts(r.taskId)}</select>
     </div>`;
   }).join('');
-  const groupOpts=Object.keys(SEQ_GROUP_HEX).map(g=>`<option value="${g}" ${g===ph.group?'selected':''}>${g}</option>`).join('');
+  // The colour shown here is the colour the MAP draws: an explicit ph.color wins over
+  // the old palette name, so the swatch and the dropdown can never disagree again.
+  const eff=seqPhaseColor(ph);
+  const named=Object.keys(SEQ_GROUP_HEX).find(g=>SEQ_GROUP_HEX[g].toLowerCase()===eff.toLowerCase());
+  const groupOpts=(named?'':`<option value="" selected>custom</option>`)
+    +Object.keys(SEQ_GROUP_HEX).map(g=>`<option value="${g}" ${g===named?'selected':''}>${g}</option>`).join('');
   return `<div class="card mb-3">
     <div class="px-2.5 py-2 flex items-center gap-2">
-      <input class="fld" style="width:78px;font-size:12.5px;font-weight:700;padding:3px 6px" value="${esc(ph.label)}"
+      <input type="color" value="${eff}" title="Phase colour — this is exactly what the map draws"
+        style="width:24px;height:24px;padding:0;border:none;background:none;flex:none;cursor:pointer"
+        onchange="seqSetPhaseColor('${ph.id}',this.value)">
+      <input class="fld" style="width:70px;font-size:12.5px;font-weight:700;padding:3px 6px" value="${esc(ph.label)}"
         onchange="seqSetPhase('${ph.id}','label',this.value)">
-      <select class="fld" style="font-size:11px;padding:3px 5px" onchange="seqSetPhase('${ph.id}','group',this.value)">${groupOpts}</select>
+      <select class="fld" style="font-size:11px;padding:3px 5px" title="Pick a palette colour" onchange="seqSetPhaseColor('${ph.id}',this.value)">${groupOpts}</select>
       <button class="icobtn ml-auto" title="Delete phase" onclick="seqDeletePhase('${ph.id}')"><span class="ms text-[17px]">delete</span></button>
     </div>
     <div class="px-2.5 pb-1.5 text-white/45" style="font-size:11px">${fl.count} footings · ${Math.round(fl.cy).toLocaleString()} CY inside this zone</div>
@@ -2751,13 +2901,25 @@ function seqCrewPanel(crews, phases){
   const rows=crews.map(c=>{
     const routing=state.seq.routeCrew===c.id;
     const route=(c.route||[]).map(id=>byId[id]?esc(byId[id].label):'?').join(' → ') || 'no route yet';
+    const cur=seqCrewIcon(c);
+    const open=state.seq.iconPick===c.id;
+    // Icon picker: the rig that rides this crew's token on the map.
+    const picker=open ? `<div class="mt-1.5 p-1.5 rounded" style="background:rgba(255,255,255,.04);border:1px solid var(--outline-v)">
+        <div class="flex flex-wrap gap-1">${seqIconList().map(([k,label])=>`
+          <button title="${esc(label)}" onclick="seqSetCrewIcon('${c.id}','${k}')"
+            style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;flex:none;
+                   background:${k===cur?c.color+'33':'rgba(255,255,255,.05)'};border:1px solid ${k===cur?c.color:'transparent'};color:${k===cur?c.color:'rgba(226,236,255,.75)'}">
+            ${seqIcon(k,20)}</button>`).join('')}</div>
+      </div>` : '';
     return `<div class="px-2.5 py-2" style="border-top:1px solid var(--outline-v)">
       <div class="flex items-center gap-1.5">
+        <button title="Pick the rig icon" onclick="seqIconPick('${c.id}')" style="width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;background:${c.color}22;border:1px solid ${c.color}66;color:${c.color}">${seqIcon(cur,17)}</button>
         <input type="color" value="${c.color}" title="Route color" style="width:22px;height:22px;padding:0;border:none;background:none;flex:none;cursor:pointer"
           onchange="seqSetCrew('${c.id}','color',this.value)">
         <input class="fld" style="flex:1;min-width:0;font-size:11.5px;padding:3px 6px" value="${esc(c.name)}" onchange="seqSetCrew('${c.id}','name',this.value)">
         <button class="icobtn" title="Delete crew" onclick="seqDeleteCrew('${c.id}')"><span class="ms text-[16px]">delete</span></button>
       </div>
+      ${picker}
       <div class="flex items-center gap-1.5 mt-1.5">
         <select class="fld" style="flex:1;font-size:10.5px;padding:3px 5px" onchange="seqSetCrew('${c.id}','activity',this.value)">${actOpts(c.activity)}</select>
         <button class="btn btn-sm ${routing?'btn-green':'btn-ghost'}" onclick="seqRouteMode('${c.id}')" title="Click phases on the map in work order">${routing?'Done':'Route'}</button>
@@ -2784,15 +2946,17 @@ function seqMount(){
   const m=getSeqMap(); if(!m) return;
   if(!_seqWired){
     _seqWired=true;
-    m.onSeqChange(()=>{ seqSave({now:true}); });                       // canvas vertex / pin / route edits
+    m.onSeqChange(()=>{ seqSave({now:true, label:'map edit'}); });                       // canvas vertex / pin / route edits
     m.onSeqZoneDrawn(poly=>{ seqAddPhase(poly); seqPushToMap(); state.seq.tool='none'; m.setSeqTool('none'); render(); toast('Phase added — set its dates on the left','ok'); });
     m.onSeqSelect(id=>{ if(state.seq.sel!==id){ state.seq.sel=id; render(); } });
     m.onSeqTick(()=>seqHudPaint());
     m.setSeqSpeed(state.seq.speed);
   }
+  if(_seqBaseId!==state.seq.mapId) seqUndoReset();          // seed the undo base for this map
   m.relocate(host, { chrome:'minimal' });
   m.setSeqTool(state.seq.tool); m.setSeqRouteCrew(state.seq.routeCrew);
   m.setSeqLayer(state.seq.layer); m.setSeqMode(state.seq.mode); m.seqSelect(state.seq.sel); m.setSeqLabels(state.seq.labels!==false); m.setSeqFilter(state.seq.seqFilter||'ALL');
+  if(m.setSeqIcons) m.setSeqIcons(state.seq.icons!==false);
   seqFeedMap();
   seqSyncLinked(true);
   seqPushToMap();
@@ -2903,6 +3067,28 @@ function boot(){
     const k=e.key.toLowerCase();
     if(mod && k==='s'){ e.preventDefault(); if(document.activeElement&&document.activeElement.blur) document.activeElement.blur(); saveNow({manual:true}); return; }   // ⌘/Ctrl+S → save
     if(!mod && !typing && k==='v' && state.nav==='schedule' && state.view==='build' && state.showTimeline){ e.preventDefault(); state.gPan=!state.gPan; if(!state.gPan) ganttCrossHide(); render(); return; }   // v → toggle Pan
+    // ── Sequencing shortcuts ──────────────────────────────────────────────────
+    // stopPropagation matters: the canvas engine listens on window, and its own ⌘Z
+    // (undo a footing edit) would otherwise fire on the very same keystroke.
+    if(state.nav==='sequencing' && !typing){
+      const fs=!!document.fullscreenElement;
+      const take=()=>{ e.preventDefault(); e.stopPropagation(); };
+      if(mod && k==='z'){ take(); e.shiftKey?seqRedo():seqUndo(); return; }
+      if(mod && k==='y'){ take(); seqRedo(); return; }
+      if(!mod && !e.altKey){
+        if(k==='p'){ take(); seqPlayToggle(); return; }
+        if(e.key==='ArrowLeft'){ take(); seqStep(e.shiftKey?-7:-1); return; }
+        if(e.key==='ArrowRight'){ take(); seqStep(e.shiftKey?7:1); return; }
+        if(e.key==='Home'){ take(); seqJump('start'); return; }
+        if(e.key==='End'){ take(); seqJump('end'); return; }
+        if(k==='i'){ take(); seqToggleIcons(); return; }
+        if(k==='t'){ take(); seqToggleLabels(); return; }
+        if(k==='f'){ take(); seqToggleFullscreen(); return; }
+        if(k==='1'||k==='2'||k==='3'){ take(); seqSetSpeed(k==='1'?1:(k==='2'?3:7)); return; }
+        if(!fs && k==='s'){ take(); seqToggleSplit(); return; }               // rebuilds the DOM — not while full-screen
+        if(!fs && (e.key==='?'||(k==='/'&&e.shiftKey))){ take(); seqToggleKeys(); return; }
+      }
+    }
     if(!mod) return;
     const sched = state.nav==='schedule'||state.nav==='settings';
     if(k==='z' && sched){ e.preventDefault(); e.shiftKey?redo():undo(); }

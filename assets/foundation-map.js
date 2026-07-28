@@ -367,12 +367,16 @@ function createFoundationMap(opts){
 
   let _seq=null, _seqDay=null, _seqLayer='all', _seqMode='plan', _seqFilter='ALL';   // _seqFilter: 'ALL' | letter | phaseId — isolate one sequence
   let _seqRev=0, _seqGeomCache=null, _seqPhaseCache=null, _seqSweepCache=null, _seqFootPhase=null;
-  let _seqCb=null, _seqCbTimer=0, _seqZoneCb=null, _seqSelCb=null;
+  let _seqCb=null, _seqCbTimer=0, _seqCbLabel='', _seqZoneCb=null, _seqSelCb=null, _seqNoticeCb=null;
   let _seqPlaying=false, _seqRaf=0, _seqLastT=0, _seqSpeed=3;        // days per second
   let _seqStamp=false, _seqStampTitle='';                            // on-canvas date/progress badge (for video export)
   let _seqShowLabels=true;                                           // phase label circles on/off
   let _seqShowIcons=true;                                            // equipment icons on crew tokens
   let _seqSelId=null, _seqDraft=null, _seqDrag=null, _seqClick=false, _seqRouteCrew=null;
+  // Polyline-style vertex editing (Bluebeam habits): ⇧+click a vertex removes it,
+  // ⌃/⌘+click an edge inserts one. _seqHover carries what the cursor is over so the
+  // canvas can preview the action before the click lands.
+  let _seqHover=null, _seqMods={shift:false,add:false}, _seqLastW=null, _seqDownMod=false;
   const _seqIconCache={};                                            // name -> compiled Path2D set
 
   const seqOn=()=>!!(_seq && _seq.phases && Object.keys(_seq.phases).length);
@@ -555,14 +559,69 @@ function createFoundationMap(opts){
   function seqHitZone(wx,wy){ const ps=seqPhases();
     for(let i=ps.length-1;i>=0;i--){ const g=seqGeom(ps[i]); if(g.pts.length>=3 && ptInPoly(wx,wy,g.pts)) return ps[i].id; }
     return null; }
+  // Closest point on the SELECTED zone's outline — where a ⌃/⌘+click drops a new vertex.
+  // Returns the segment index it belongs to, so the point is spliced in the right place.
+  function seqHitEdge(wx,wy){ const tol=10/scale;
+    const ph=_seqSelId?_seq.phases[_seqSelId]:null; if(!ph) return null;
+    const g=seqGeom(ph), n=g.pts.length; if(n<2) return null;
+    let best=null;
+    for(let i=0;i<n;i++){
+      const a=g.pts[i], b=g.pts[(i+1)%n];
+      const dx=b[0]-a[0], dy=b[1]-a[1], L2=dx*dx+dy*dy; if(!L2) continue;
+      let t=((wx-a[0])*dx+(wy-a[1])*dy)/L2; t=Math.max(0,Math.min(1,t));
+      const px=a[0]+dx*t, py=a[1]+dy*t, d=Math.hypot(px-wx,py-wy);
+      if(d<tol && (!best || d<best.d)) best={ id:ph.id, i, at:[px,py], d };
+    }
+    return best; }
+  // Nearest point of the in-progress draft polygon (⇧+click drops it while drawing)
+  function seqHitDraftPt(wx,wy){ const tol=10/scale;
+    if(!_seqDraft || !_seqDraft.pts.length) return -1;
+    let bi=-1, bd=tol;
+    _seqDraft.pts.forEach((p,i)=>{ const d=Math.hypot(p[0]-wx,p[1]-wy); if(d<bd){ bd=d; bi=i; } });
+    return bi; }
 
-  function seqOnDown(wx,wy){
+  // ── add / remove a vertex on the selected zone ──
+  // Min 3 points: a zone that can't be filled isn't a zone.
+  function seqRemoveVertex(id,i){
+    const ph=_seq && _seq.phases && _seq.phases[id]; if(!ph) return false;
+    const poly=(ph.poly||[]).slice();
+    if(poly.length<=3 || i<0 || i>=poly.length) return false;
+    poly.splice(i,1); ph.poly=poly;
+    seqInvalidate(ph.id); _seqHover=null; scheduleDraw(); fireSeqChange('remove point');
+    return true;
+  }
+  function seqInsertVertex(id,i,worldPt){
+    const ph=_seq && _seq.phases && _seq.phases[id]; if(!ph) return -1;
+    const poly=(ph.poly||[]).slice(); if(!poly.length) return -1;
+    const at=(i+1)%(poly.length+1);                       // land after the segment's start vertex
+    poly.splice(at,0,worldToNorm(worldPt)); ph.poly=poly;
+    seqInvalidate(ph.id); _seqHover=null; scheduleDraw(); fireSeqChange('add point');
+    return at;
+  }
+
+  function seqOnDown(wx,wy,e){
     const t=st.seqTool;
-    if(t==='zone'){ _seqClick=true; _moved=false; return true; }                    // pure add-vertex on pointer-up; editing is the Move tool
+    const shift=!!(e&&e.shiftKey), add=!!(e&&(e.ctrlKey||e.metaKey));   // macOS ⌃+click still reports ctrlKey, whichever button it maps to
+    if(t==='zone'){
+      if(shift){ const i=seqHitDraftPt(wx,wy);                                      // ⇧+click drops a point off the polyline being drawn
+        if(i>=0){ _seqDraft.pts.splice(i,1); if(!_seqDraft.pts.length) _seqDraft=null; scheduleDraw(); _seqClick=true; _moved=true; return true; } }
+      _seqClick=true; _moved=false; return true;                                    // pure add-vertex on pointer-up; editing is the Move tool
+    }
     if(t==='pin'){
+      if(shift){                                                                    // ⇧+click a vertex = delete it
+        const v=seqHitVertex(wx,wy);
+        if(v){ if(!seqRemoveVertex(v.id,v.i)) seqNotice('A zone needs at least 3 points','warn');
+          _seqClick=true; _moved=true; return true; }
+      }
+      if(add && !seqHitVertex(wx,wy)){                                              // ⌃/⌘+click an edge = insert a point there, then drag it
+        const eh=seqHitEdge(wx,wy);                                                 // (on top of an existing point it just drags that one)
+        if(eh){ const at=seqInsertVertex(eh.id,eh.i,eh.at);
+          if(at>=0){ _seqDrag={ type:'vertex', id:eh.id, i:at }; _moved=false; return true; } }
+      }
       const pid=seqHitPin(wx,wy);
       if(pid){ _seqDrag={ type:'pin', id:pid }; seqSelect(pid); _moved=false; return true; }
       const v=seqHitVertex(wx,wy); if(v){ _seqDrag={ type:'vertex', id:v.id, i:v.i }; _moved=false; return true; }
+      _seqDownMod = shift||add;                          // a mis-aimed ⇧/⌃ click must not drop the selection you are editing
       _seqClick=true; _moved=false; return true;
     }
     if(t==='route'){ _seqClick=true; _moved=false; return true; }
@@ -578,11 +637,28 @@ function createFoundationMap(opts){
     if(_seqDraft){ _seqDraft.cursor=[wx,wy]; scheduleDraw(); return true; }
     return false;
   }
+  // Hover preview for the vertex tools — runs on every plain move while the Move/edit
+  // tool is live, so the ⇧ / ⌃ affordance shows up before the click.
+  function seqHoverAt(wx,wy,e){
+    if(e) _seqMods={ shift:!!e.shiftKey, add:!!(e.ctrlKey||e.metaKey) };
+    if(wx!=null) _seqLastW=[wx,wy]; else if(_seqLastW){ wx=_seqLastW[0]; wy=_seqLastW[1]; } else return null;
+    if(st.seqTool!=='pin' || !seqOn() || !_seqSelId){ if(_seqHover){ _seqHover=null; scheduleDraw(); } return null; }
+    const shift=_seqMods.shift, add=_seqMods.add;
+    let h=null;
+    const v=seqHitVertex(wx,wy);
+    if(v) h={ kind: shift?'del':'move', id:v.id, i:v.i };
+    else if(add){ const eh=seqHitEdge(wx,wy); if(eh) h={ kind:'add', id:eh.id, i:eh.i, at:eh.at }; }
+    const same = (!h&&!_seqHover) || (h&&_seqHover&&h.kind===_seqHover.kind&&h.i===_seqHover.i&&h.id===_seqHover.id
+      && (!h.at || (_seqHover.at && Math.abs(h.at[0]-_seqHover.at[0])<0.2 && Math.abs(h.at[1]-_seqHover.at[1])<0.2)));
+    _seqHover=h; if(!same) scheduleDraw();
+    return h;
+  }
   function seqOnUp(wx,wy){
-    if(_seqDrag){ const moved=_moved; _seqDrag=null; if(moved) fireSeqChange(); return true; }
+    if(_seqDrag){ const moved=_moved; _seqDrag=null; if(moved) fireSeqChange('move point'); return true; }
     if(!_seqClick) return false;
-    _seqClick=false; if(_moved) return true;
+    _seqClick=false; const wasMod=_seqDownMod; _seqDownMod=false; if(_moved) return true;
     const t=st.seqTool;
+    if(t==='pin' && wasMod) return true;                 // missed the point/edge — leave the selection alone
     if(t==='zone'){ if(!_seqDraft) _seqDraft={ pts:[] }; _seqDraft.pts.push([wx,wy]); scheduleDraw(); return true; }
     if(t==='route'){ const pid=seqHitPin(wx,wy)||seqHitZone(wx,wy); if(pid) seqRouteClick(pid); return true; }
     if(t==='pin'){ seqSelect(seqHitZone(wx,wy)); return true; }
@@ -604,6 +680,41 @@ function createFoundationMap(opts){
   }
   function cancelSeqDraft(){ _seqDraft=null; scheduleDraw(); }
   function undoSeqDraftPoint(){ if(_seqDraft && _seqDraft.pts.length){ _seqDraft.pts.pop(); if(!_seqDraft.pts.length) _seqDraft=null; scheduleDraw(); } }
+
+  // ── polyline handles on the selected zone (Bluebeam-style) ──
+  // Solid squares = real vertices you can drag or ⇧+click away. Hollow midpoint dots
+  // = where a ⌃/⌘+click would splice in a new point. Hover paints the live preview.
+  function drawZoneHandles(g,sc){
+    const n=g.pts.length; if(!n) return;
+    const hv=_seqHover;
+    if(_seqMods.add){                                                     // midpoint "add here" ghosts, only while ⌃/⌘ is down
+      ctx.lineWidth=1.2/sc; ctx.strokeStyle='rgba(126,231,135,0.75)'; ctx.fillStyle='rgba(6,6,14,0.85)';
+      for(let i=0;i<n;i++){ const a=g.pts[i], b=g.pts[(i+1)%n];
+        const mx=(a[0]+b[0])/2, my=(a[1]+b[1])/2;
+        ctx.beginPath(); ctx.arc(mx,my,2.6/sc,0,7); ctx.fill(); ctx.stroke(); }
+    }
+    const hs=3.4/sc; ctx.lineWidth=1.5/sc;
+    g.pts.forEach((p,i)=>{
+      const del = hv && hv.kind==='del' && hv.i===i;
+      ctx.fillStyle = del?'rgba(255,107,107,0.95)':'#06060e';
+      ctx.strokeStyle = del?'#ff6b6b':'#52E6E0';
+      ctx.beginPath(); ctx.rect(p[0]-hs,p[1]-hs,hs*2,hs*2); ctx.fill(); ctx.stroke();
+      if(del){                                                            // × over the point that ⇧+click will drop
+        const r=6.5/sc; ctx.strokeStyle='#ff6b6b'; ctx.lineWidth=1.8/sc;
+        ctx.beginPath(); ctx.moveTo(p[0]-r,p[1]-r); ctx.lineTo(p[0]+r,p[1]+r);
+        ctx.moveTo(p[0]+r,p[1]-r); ctx.lineTo(p[0]-r,p[1]+r); ctx.stroke();
+        ctx.beginPath(); ctx.arc(p[0],p[1],r+2/sc,0,7); ctx.lineWidth=1.1/sc; ctx.stroke();
+      }
+    });
+    if(hv && hv.kind==='add' && hv.at){                                   // + at the exact spot the new point lands
+      const p=hv.at, r=6.5/sc;
+      ctx.fillStyle='rgba(126,231,135,0.95)'; ctx.strokeStyle='#7ee787'; ctx.lineWidth=1.6/sc;
+      ctx.beginPath(); ctx.arc(p[0],p[1],3.6/sc,0,7); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(p[0]-r,p[1]); ctx.lineTo(p[0]+r,p[1]);
+      ctx.moveTo(p[0],p[1]-r); ctx.lineTo(p[0],p[1]+r); ctx.stroke();
+      ctx.beginPath(); ctx.arc(p[0],p[1],r+2/sc,0,7); ctx.lineWidth=1.1/sc; ctx.stroke();
+    }
+  }
 
   // ── rendering: zones sit UNDER the footings so the footings stay legible ──
   function drawSeqZones(vx0,vy0,vx1,vy1,sc){
@@ -628,10 +739,7 @@ function createFoundationMap(opts){
       ctx.lineWidth=(isSel?2.6:1.1)/sc;
       ctx.strokeStyle=hex2rgba(isSel?'#52E6E0':col, off?0.14:(s2.active?0.7:(started?0.34:0.2)));
       ctx.stroke();
-      if(st.seqTool==='pin' && isSel){              // draggable vertex handles — ONLY the selected zone, small
-        const hs=3/sc; ctx.fillStyle='#06060e'; ctx.strokeStyle='#52E6E0'; ctx.lineWidth=1.4/sc;
-        g.pts.forEach(p=>{ ctx.beginPath(); ctx.arc(p[0],p[1],hs,0,7); ctx.fill(); ctx.stroke(); });
-      }
+      if(st.seqTool==='pin' && isSel) drawZoneHandles(g,sc);   // vertex + midpoint handles — ONLY the selected zone
     });
     if(_seqDraft && _seqDraft.pts.length){
       ctx.strokeStyle='#52E6E0'; ctx.lineWidth=2/sc; ctx.setLineDash([7/sc,5/sc]); ctx.lineJoin='round';
@@ -884,6 +992,7 @@ function createFoundationMap(opts){
   function seqPhaseMatchesFilter(ph){ if(_seqFilter==='ALL'||!ph) return true; if(_seqFilter===ph.id) return true; return _seqFilter===seqLetterOf(ph.label); }
   function seqFootMatchesFilter(f){ if(_seqFilter==='ALL') return true; const pid=seqFootPhaseMap()[f.no]; if(!pid) return false; return seqPhaseMatchesFilter(_seq.phases[pid]); }
   function setSeqTool(t){ st.seqTool=t||'none'; if(t!=='zone') _seqDraft=null;
+    if(t!=='pin'){ _seqHover=null; _seqMods={shift:false,add:false}; _seqDownMod=false; }
     if(canvas) canvas.style.cursor=(t==='zone'||t==='route')?'crosshair':(t==='pin'?'move':'default');
     scheduleDraw(); }
   function setSeqRouteCrew(id){ _seqRouteCrew=id||null; }
@@ -903,8 +1012,12 @@ function createFoundationMap(opts){
   function onSeqZoneDrawn(cb){ _seqZoneCb=cb; }
   function onSeqSelect(cb){ _seqSelCb=cb; }
   function onSeqTick(cb){ _seqTickCb=cb; }
-  function fireSeqChange(){ if(!_seqCb) return; clearTimeout(_seqCbTimer);
-    _seqCbTimer=setTimeout(()=>{ try{ _seqCb(_seq); }catch(e){ console.error('seq change', e); } }, 400); }
+  function onSeqNotice(cb){ _seqNoticeCb=cb; }
+  function seqNotice(msg,kind){ if(_seqNoticeCb){ try{ _seqNoticeCb(msg,kind); }catch(e){} } }
+  // `label` names the edit for the host's undo stack ("add point", "move point", …)
+  function fireSeqChange(label){ if(!_seqCb) return; clearTimeout(_seqCbTimer);
+    _seqCbLabel=label||'map edit';
+    _seqCbTimer=setTimeout(()=>{ const l=_seqCbLabel; try{ _seqCb(_seq,l); }catch(e){ console.error('seq change', e); } }, 400); }
 
   // ── zone sources: from the current multi-selection, or from an existing pour ──
   function bboxPoly(pts,pad){
@@ -970,7 +1083,7 @@ function createFoundationMap(opts){
     const [wx,wy]=s2w(mx,my);
     // ── sequence authoring (draw zone / move pin / build route) — after the pan
     //    checks above, so Space-pan and middle-drag still work while authoring ──
-    if(st.seqTool && st.seqTool!=='none'){ if(seqOnDown(wx,wy)) return; }
+    if(st.seqTool && st.seqTool!=='none'){ if(seqOnDown(wx,wy,e)) return; }
     // ── markup tools ──
     if(st.tool==='region'){ _markBand={x0:wx,y0:wy,x1:wx,y1:wy}; _moved=false; return; }
     if(st.tool==='markselect'){
@@ -1019,7 +1132,12 @@ function createFoundationMap(opts){
     if(band){ const w=s2w(mx,my); band.x1=w[0]; band.y1=w[1]; _moved=true; scheduleDraw(); return; }
     if(drag){ if(Math.abs(mx-drag.downx)+Math.abs(my-drag.downy)>3)_moved=true;
       if(drag.pan){ tx=drag.tx+(mx-drag.mx)*PAN_SENS; ty=drag.ty+(my-drag.my)*PAN_SENS; scheduleDraw(); } return; }
-    const [wx,wy]=s2w(mx,my); const f=hitFoot(wx,wy);
+    const [wx,wy]=s2w(mx,my);
+    // Move/edit tool, nothing being dragged: preview what ⇧ / ⌃ would do under the cursor
+    if(st.seqTool==='pin'){ const h=seqHoverAt(wx,wy,e);
+      if(canvas) canvas.style.cursor = h ? (h.kind==='del'?'crosshair':(h.kind==='add'?'copy':'grab')) : 'move';
+      hideTip(); return; }
+    const f=hitFoot(wx,wy);
     if(f) showTip(f,mx,my); else hideTip();
   };
   const onUp=(e)=>{
@@ -1298,11 +1416,20 @@ function createFoundationMap(opts){
       if(st.tool==='polyline'){ e.preventDefault(); finishPolyline(); } });
     canvas.addEventListener('mousedown', (e)=>{ if(e.button===1) e.preventDefault(); });   // suppress middle-click autoscroll
     canvas.addEventListener('auxclick', (e)=>{ if(e.button===1) e.preventDefault(); });
+    // macOS turns ⌃+click into a secondary click — keep the OS menu out of the way while
+    // the Move/edit tool is live, so ⌃+click can add a polyline point instead.
+    canvas.addEventListener('contextmenu', (e)=>{ if(st.seqTool==='pin') e.preventDefault(); });
     if(!_keyWired){ _keyWired=true; window.addEventListener('keydown', onKey); window.addEventListener('keyup', onKeyUp); }
   }
-  function onKeyUp(e){ if(e.code==='Space' || e.key===' '){ _spaceDown=false; if(canvas) canvas.style.cursor=(st.tool==='region'||st.tool==='polyline'||st.tool==='text'||st.tool==='addfoot')?'crosshair':(st.tool==='footedit'?'move':'default'); } }
+  // Tapping ⇧ or ⌃ without moving the mouse still has to flip the vertex affordance
+  function seqSyncMods(e){ if(st.seqTool!=='pin') return;
+    const h=seqHoverAt(null,null,e);
+    if(canvas) canvas.style.cursor = h ? (h.kind==='del'?'crosshair':(h.kind==='add'?'copy':'grab')) : 'move'; }
+  function onKeyUp(e){ if(e.code==='Space' || e.key===' '){ _spaceDown=false; if(canvas) canvas.style.cursor=(st.tool==='region'||st.tool==='polyline'||st.tool==='text'||st.tool==='addfoot')?'crosshair':(st.tool==='footedit'?'move':'default'); }
+    if(e.key==='Shift'||e.key==='Control'||e.key==='Meta') seqSyncMods(e); }
   function onKey(e){
     if(!root || root.offsetParent===null) return;                       // only when this map is visible
+    if(e.key==='Shift'||e.key==='Control'||e.key==='Meta') seqSyncMods(e);
     if(/INPUT|TEXTAREA|SELECT/.test((e.target&&e.target.tagName)||'')) return;
     if(e.code==='Space' || e.key===' '){ if(!_spaceDown){ _spaceDown=true; if(canvas) canvas.style.cursor='grab'; } e.preventDefault(); return; }   // hold Space to pan
     // ── zone drawing: Enter closes the polygon, Esc cancels, Backspace drops the last vertex ──
@@ -2005,7 +2132,8 @@ function createFoundationMap(opts){
     setTool, setMarkColor, finishPolyline,
     deleteSelectedMarkup(){ if(selMarkupId) deleteMarkup(selMarkupId); }, clearMarkups,
     // ── sequence layer ──
-    setSequence, getSequence, onSeqChange, onSeqZoneDrawn, onSeqSelect, onSeqTick,
+    setSequence, getSequence, onSeqChange, onSeqZoneDrawn, onSeqSelect, onSeqTick, onSeqNotice,
+    seqRemoveVertex, seqInsertVertex, seqVertexCount(id){ const ph=_seq&&_seq.phases&&_seq.phases[id]; return ph?((ph.poly||[]).length):0; },
     setSeqPlayhead, getSeqPlayhead, seqRange, setSeqLayer, setSeqMode,
     setSeqFilter, getSeqFilter, seqLetters,
     setSeqTool, setSeqRouteCrew, getSeqRouteCrew, finishSeqDraft, cancelSeqDraft, undoSeqDraftPoint,

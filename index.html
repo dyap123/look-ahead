@@ -65,6 +65,21 @@
   option, select option, optgroup{ background:#0f1722 !important; color:#eef3f9 !important; }
   .fld{ background:rgba(255,255,255,.06); border:1px solid var(--outline); border-radius:4px; color:var(--on); padding:6px 9px; font-size:13px; }
   .fld:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 2px rgba(47,128,237,.25); }
+  /* Sequencing rail date fields — the native date text renders thin and grey by default,
+     which is unreadable on a jobsite screen. Filled dates get full-contrast tabular
+     digits; only the untouched mm/dd/yyyy placeholder stays quiet. */
+  .seqdate{ font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums; font-weight:700 !important;
+    letter-spacing:-.01em; color:#f2f7ff !important; background:rgba(255,255,255,.08); border-color:var(--outline); }
+  .seqdate::-webkit-datetime-edit{ color:#f2f7ff; font-weight:700; }
+  .seqdate::-webkit-datetime-edit-fields-wrapper{ color:#f2f7ff; }
+  .seqdate::-webkit-datetime-edit-text{ color:rgba(242,247,255,.55); padding:0 1px; }
+  .seqdate::-webkit-calendar-picker-indicator{ opacity:.6; filter:invert(1) brightness(1.7); cursor:pointer; }
+  .seqdate::-webkit-calendar-picker-indicator:hover{ opacity:1; }
+  .seqdate[value=""]{ background:rgba(255,255,255,.03); border-color:var(--outline-v); }
+  .seqdate[value=""]::-webkit-datetime-edit{ color:rgba(151,166,187,.62); font-weight:600; }
+  .seqdate[value=""]::-webkit-datetime-edit-text{ color:rgba(151,166,187,.45); }
+  .seqdate:disabled{ opacity:.85; -webkit-text-fill-color:#bcd0ea; }
+  .seqact{ font-family:'Saira','Inter',sans-serif; font-size:12.5px; font-weight:700; letter-spacing:.015em; color:#eaf1fb; }
   /* hide native number spinner so the days value isn't clipped (we have +/- in the popover) */
   input[type=number].fld{ -moz-appearance:textfield; appearance:textfield; padding-left:4px; padding-right:4px; }
   input[type=number].fld::-webkit-outer-spin-button, input[type=number].fld::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
@@ -2382,6 +2397,9 @@ function seqKeysCard(){
     ['F','Full screen'],
     ['Esc','Cancel the zone being drawn'],
     ['Enter','Close the zone being drawn'],
+    ['⇧+click','Move/edit tool — delete the zone point you click'],
+    ['⌃/⌘+click','Move/edit tool — add a point on the zone edge you click'],
+    ['Backspace','Drop the last point while drawing a zone'],
     ['?','Show / hide this card'],
   ];
   return `<div class="card p-3 mb-3">
@@ -2698,8 +2716,8 @@ function sequencingView(){
     <div class="flex items-center gap-2 flex-wrap mb-3">
       <div class="seg flex-wrap">
         ${toolBtn('none','Select','touch_app','Pan, zoom and box-select footings')}
-        ${toolBtn('zone','Draw zone','polyline','Click vertices to trace a phase — Enter or double-click to close, Esc to cancel')}
-        ${toolBtn('pin','Move / edit','pan_tool','Drag zone vertices and label pins')}
+        ${toolBtn('zone','Draw zone','polyline','Click vertices to trace a phase — ⇧+click drops a point you just placed, Enter or double-click to close, Esc to cancel')}
+        ${toolBtn('pin','Move / edit','pan_tool','Drag zone vertices and label pins — ⇧+click a point to delete it, ⌃/⌘+click an edge to add one')}
       </div>
       <div class="seg" style="padding:2px">
         <button class="icobtn ${seqUndoStack.length?'':'opacity-30'}" title="Undo ${seqUndoStack.length?'“'+esc(seqUndoStack[seqUndoStack.length-1].label)+'”':''} (⌘Z)" onclick="seqUndo()"><span class="ms text-[18px]">undo</span></button>
@@ -2708,8 +2726,10 @@ function sequencingView(){
       <button class="btn btn-ghost btn-sm" onclick="seqPhaseFromSelection()" title="Box-select footings with the Select tool, then click this"><span class="ms text-[16px]">highlight_alt</span>Phase from selection</button>
       <button class="btn btn-ghost btn-sm" onclick="seqSeedFromPours()" title="One phase per CUP pour, outlined around its assigned footings"><span class="ms text-[16px]">library_add</span>Seed from CUP pours</button>
       <button class="icobtn ml-auto ${state.seq.keys?'text-sky-300':''}" title="Keyboard shortcuts (?)" onclick="seqToggleKeys()"><span class="ms text-[18px]">keyboard</span></button>
-      ${tool==='zone' ? `<span class="chip" style="background:rgba(82,230,224,.15);color:#7df0ec">Click to place vertices
+      ${tool==='zone' ? `<span class="chip" style="background:rgba(82,230,224,.15);color:#7df0ec">Click to place vertices · ⇧+click removes one
         <button class="btn btn-sm btn-green ml-1" onclick="seqFinishZone()">Close zone</button></span>` : ''}
+      ${tool==='pin' ? `<span class="chip" style="background:rgba(82,230,224,.15);color:#7df0ec;font-weight:600">
+        Drag points to reshape · <span style="color:#ff9b9b">⇧+click deletes</span> · <span style="color:#8ff09a">⌃/⌘+click on an edge adds</span></span>` : ''}
       ${state.seq.routeCrew && d.crews[state.seq.routeCrew] ? `<span class="chip" style="background:${d.crews[state.seq.routeCrew].color}22;color:${d.crews[state.seq.routeCrew].color}">
         Routing ${esc(d.crews[state.seq.routeCrew].name)} — click phases in order
         <button class="btn btn-sm btn-ghost ml-1" onclick="seqRouteMode('${state.seq.routeCrew}')">Done</button></span>` : ''}
@@ -2830,11 +2850,11 @@ function seqPhaseListPanel(phases){
     const m=getSeqMap();
     const fl=m?m.phaseFootings(ph.id):{count:0,cy:0};
     const dates=SEQ_ACT_ROWS.filter(a=>ph.acts&&ph.acts[a.key]&&ph.acts[a.key].start).length;
-    return `<div class="flex items-center gap-2 px-2.5 py-1.5 cursor-pointer" style="border-top:1px solid var(--outline-v);${on?'background:rgba(47,128,237,.12)':''}" onclick="seqSelectPhase('${ph.id}')">
+    return `<div class="flex items-center gap-2 px-2.5 py-2 cursor-pointer" style="border-top:1px solid var(--outline-v);${on?'background:rgba(47,128,237,.12)':''}" onclick="seqSelectPhase('${ph.id}')">
       <span style="width:10px;height:10px;border-radius:3px;background:${g};flex:none"></span>
-      <span class="font-semibold" style="font-size:12.5px">${esc(ph.label)}</span>
-      <span class="text-white/40 ml-auto" style="font-size:10.5px">${fl.count} ftg · ${Math.round(fl.cy).toLocaleString()} CY</span>
-      <span class="text-white/30" style="font-size:10px" title="${dates} of 5 activity dates set">${dates}/5</span>
+      <span class="font-bold" style="font-size:13px;color:#eaf1fb">${esc(ph.label)}</span>
+      <span class="ml-auto mono" style="font-size:11px;font-weight:600;color:rgba(219,228,239,.72)">${fl.count} ftg · ${Math.round(fl.cy).toLocaleString()} CY</span>
+      <span class="mono" style="font-size:10.5px;font-weight:700;color:${dates?'rgba(143,194,242,.9)':'rgba(151,166,187,.55)'}" title="${dates} of 5 activity dates set">${dates}/5</span>
     </div>`;
   }).join('');
   return `<div class="card mb-3">
@@ -2859,19 +2879,20 @@ function seqPhasePanel(ph){
   const rows=SEQ_ACT_ROWS.map(a=>{
     const r=(ph.acts&&ph.acts[a.key])||{start:'',end:'',taskId:null};
     const linked=!!r.taskId;
-    return `<div class="px-2.5 py-1.5" style="border-top:1px solid var(--outline-v)">
-      <div class="flex items-center gap-1.5 mb-1">
-        <span style="color:${a.color};flex:none">${seqIcon(seqActIcon()[a.key],15,a.color)}</span>
-        <span style="font-size:11px;font-weight:600">${a.label}</span>
+    return `<div class="px-2.5 py-2" style="border-top:1px solid var(--outline-v)">
+      <div class="flex items-center gap-1.5" style="margin-bottom:6px">
+        <span style="color:${a.color};flex:none">${seqIcon(seqActIcon()[a.key],16,a.color)}</span>
+        <span class="seqact">${a.label}</span>
         ${linked?'<span class="ms text-[13px] ml-auto" style="color:var(--primary)" title="Dates come from the linked schedule task">link</span>':''}
       </div>
       <div class="flex items-center gap-1.5">
-        <input type="date" class="fld" style="flex:1;font-size:11px;padding:3px 5px" value="${esc(r.start||'')}" ${linked?'disabled':''}
-          onchange="seqSetAct('${ph.id}','${a.key}','start',this.value)">
-        <input type="date" class="fld" style="flex:1;font-size:11px;padding:3px 5px" value="${esc(r.end||'')}" ${linked?'disabled':''}
-          onchange="seqSetAct('${ph.id}','${a.key}','end',this.value)">
+        <input type="date" class="fld seqdate" style="flex:1;min-width:0;font-size:12.5px;padding:5px 6px" value="${esc(r.start||'')}" ${linked?'disabled':''}
+          title="Start" onchange="seqSetAct('${ph.id}','${a.key}','start',this.value)">
+        <span class="text-white/35" style="font-size:11px;flex:none">→</span>
+        <input type="date" class="fld seqdate" style="flex:1;min-width:0;font-size:12.5px;padding:5px 6px" value="${esc(r.end||'')}" ${linked?'disabled':''}
+          title="Finish" onchange="seqSetAct('${ph.id}','${a.key}','end',this.value)">
       </div>
-      <select class="fld w-full mt-1" style="font-size:10.5px;padding:3px 5px" onchange="seqSetAct('${ph.id}','${a.key}','taskId',this.value)">${taskOpts(r.taskId)}</select>
+      <select class="fld w-full mt-1" style="font-size:11.5px;padding:4px 6px" onchange="seqSetAct('${ph.id}','${a.key}','taskId',this.value)">${taskOpts(r.taskId)}</select>
     </div>`;
   }).join('');
   // The colour shown here is the colour the MAP draws: an explicit ph.color wins over
@@ -2890,7 +2911,7 @@ function seqPhasePanel(ph){
       <select class="fld" style="font-size:11px;padding:3px 5px" title="Pick a palette colour" onchange="seqSetPhaseColor('${ph.id}',this.value)">${groupOpts}</select>
       <button class="icobtn ml-auto" title="Delete phase" onclick="seqDeletePhase('${ph.id}')"><span class="ms text-[17px]">delete</span></button>
     </div>
-    <div class="px-2.5 pb-1.5 text-white/45" style="font-size:11px">${fl.count} footings · ${Math.round(fl.cy).toLocaleString()} CY inside this zone</div>
+    <div class="px-2.5 pb-2 text-white/70" style="font-size:11.5px;font-weight:600">${fl.count} footings · ${Math.round(fl.cy).toLocaleString()} CY inside this zone</div>
     ${rows}
   </div>`;
 }
@@ -2946,7 +2967,8 @@ function seqMount(){
   const m=getSeqMap(); if(!m) return;
   if(!_seqWired){
     _seqWired=true;
-    m.onSeqChange(()=>{ seqSave({now:true, label:'map edit'}); });                       // canvas vertex / pin / route edits
+    m.onSeqChange((seq,label)=>{ seqSave({now:true, label:label||'map edit'}); });        // canvas vertex / pin / route edits
+    if(m.onSeqNotice) m.onSeqNotice((msg,kind)=>toast(msg,kind||'ok'));                   // engine-side guardrails (e.g. min 3 points)
     m.onSeqZoneDrawn(poly=>{ seqAddPhase(poly); seqPushToMap(); state.seq.tool='none'; m.setSeqTool('none'); render(); toast('Phase added — set its dates on the left','ok'); });
     m.onSeqSelect(id=>{ if(state.seq.sel!==id){ state.seq.sel=id; render(); } });
     m.onSeqTick(()=>seqHudPaint());
